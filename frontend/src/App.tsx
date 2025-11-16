@@ -259,6 +259,17 @@ function App() {
             setIsProcessing(false);
         } else {
             console.log('[Sidebar] ✅ Message sent with ID:', messageId);
+
+            // Set a timeout to stop spinner if no completion message received within 5 minutes
+            const timeoutId = setTimeout(() => {
+                console.warn('[Sidebar] ⏱️ No completion message received within 5 minutes, stopping spinner');
+                setIsProcessing(false);
+                setStatusMessage('Request timed out - check if changes were applied');
+            }, 5 * 60 * 1000); // 5 minutes
+
+            // Store timeout ID to clear it if we get a response
+            // We'll clear it in the response handler
+            (window as any)[`timeout_${messageId}`] = timeoutId;
         }
     };
 

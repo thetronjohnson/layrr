@@ -14,7 +14,8 @@ interface ElementInfo {
  * 1. Hover highlighting (when in selection mode)
  * 2. Element selection on click
  * 3. Color picker mode
- * 4. Communication with sidebar via postMessage
+ * 4. Resize mode with visual handles
+ * 5. Communication with sidebar via postMessage
  */
 class MinimalLayrr {
   private isSelectionMode = false;
@@ -113,7 +114,7 @@ class MinimalLayrr {
 
     const target = e.target as HTMLElement;
 
-    // Ignore our own overlay
+    // Ignore our own overlays
     if (target.id === 'layrr-highlight') return;
 
     // Ignore Layrr container
@@ -133,7 +134,7 @@ class MinimalLayrr {
 
     const target = e.target as HTMLElement;
 
-    // Ignore our own overlay
+    // Ignore our own overlays
     if (target.id === 'layrr-highlight') return;
 
     // Ignore Layrr container

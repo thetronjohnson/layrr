@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { CursorClick, Image as ImageIcon, PaperPlaneRight, ArrowsOutCardinal, Eyedropper, Stop } from '@phosphor-icons/react';
+import { CursorClick, Image as ImageIcon, PaperPlaneRight, ArrowsOutCardinal, Eyedropper, Stop, FloppyDisk, ArrowsLeftRight } from '@phosphor-icons/react';
 
 interface ChatInputProps {
   selectedElement: {
@@ -146,14 +146,6 @@ export default function ChatInput({
           className="hidden"
         />
 
-        {/* Expand Button */}
-        <button
-          disabled={isProcessing}
-          className="p-2 rounded-md text-gray-700 hover:bg-primary-dark transition-all disabled:opacity-50"
-          title="Expand"
-        >
-          <ArrowsOutCardinal size={16} weight="bold" />
-        </button>
 
         {/* Color Picker Button */}
         <button
@@ -169,12 +161,30 @@ export default function ChatInput({
           <Eyedropper size={16} weight="bold" />
         </button>
 
-        {/* Stop Proxy Button - Right aligned */}
+        {/* Save Button */}
+        <button
+          disabled={isProcessing}
+          className="p-2 rounded-md text-gray-700 hover:bg-primary-dark transition-all disabled:opacity-50"
+          title="Save"
+        >
+          <FloppyDisk size={16} weight="bold" />
+        </button>
+
+        {/* Swap Button */}
+        <button
+          disabled={isProcessing}
+          className="ml-auto p-2 rounded-md text-gray-700 hover:bg-primary-dark transition-all disabled:opacity-50"
+          title="Swap"
+        >
+          <ArrowsLeftRight size={16} weight="bold" />
+        </button>
+
+        {/* Stop Proxy Button */}
         {onStopProxy && (
           <button
             onClick={onStopProxy}
             disabled={isLoading}
-            className="ml-auto p-2 rounded-md text-gray-700 hover:bg-primary-dark transition-all disabled:opacity-50"
+            className="p-2 rounded-md text-gray-700 hover:bg-primary-dark transition-all disabled:opacity-50"
             title="Stop Proxy"
           >
             <Stop size={16} weight="bold" />
