@@ -48,20 +48,13 @@ func InjectScript(resp *http.Response, baseURL string) error {
 		return nil
 	}
 
-	// Create injection tags in correct order:
-	// 1. Tailwind CSS (non-blocking)
-	// 2. inject.css (custom styles)
-	// 3. inject-utils.js (utilities - must load before main script)
-	// 4. inject.js (main application script - deferred)
-	// 5. Alpine.js (must load last with defer)
+	// Create injection tag for minimal Layrr (hover + selection only, ~1.36 KB)
+	// This minimal bundle only handles element highlighting and selection
+	// All UI controls are now in the sidebar
 	injection := fmt.Sprintf(`
-	<!-- Layrr - Alpine.js + Tailwind CSS + Custom Scripts -->
-	<script src="%s/tailwind.min.js"></script>
-	<link rel="stylesheet" href="%s/inject.css">
-	<script src="%s/inject-utils.js"></script>
-	<script defer src="%s/inject.js"></script>
-	<script defer src="%s/alpine.min.js"></script>
-`, baseURL, baseURL, baseURL, baseURL, baseURL)
+	<!-- Layrr - Minimal Element Selector -->
+	<script defer src="%s/inject-minimal.js"></script>
+`, baseURL)
 
 	// Try to inject before </body>, otherwise before </html>, otherwise at the end
 	bodyStr := string(body)

@@ -63,7 +63,7 @@ func (a *App) startup(ctx context.Context) {
 }
 
 // StartProxy initializes and starts the proxy server for a given project
-func (a *App) StartProxy(projectPath string) string {
+func (a *App) StartProxy(projectPath string, targetPort int) string {
 	if a.isServerActive {
 		return "Proxy server is already running"
 	}
@@ -73,15 +73,21 @@ func (a *App) StartProxy(projectPath string) string {
 		a.projectDir = projectPath
 	}
 
-	// Auto-detect dev server port
-	detectedPort, err := proxy.DetectDevServer()
-	if err != nil {
-		return fmt.Sprintf("Error: Could not detect dev server. Please start your dev server first. %v", err)
+	// Use provided port or auto-detect
+	var err error
+	if targetPort > 0 {
+		a.targetPort = targetPort
+	} else {
+		// Auto-detect dev server port
+		detectedPort, err := proxy.DetectDevServer()
+		if err != nil {
+			return fmt.Sprintf("Error: Could not detect dev server. Please start your dev server first or specify a port. %v", err)
+		}
+		a.targetPort = detectedPort
 	}
-	a.targetPort = detectedPort
 
 	// Ensure Anthropic API key is available
-	if err := a.ensureAPIKey(); err != nil {
+	if err = a.ensureAPIKey(); err != nil {
 		return fmt.Sprintf("Error: %v. Please set your Anthropic API key.", err)
 	}
 
@@ -188,7 +194,58 @@ func (a *App) SelectProjectDirectory() (string, error) {
 	a.projectDir = selectedDir
 	log.Printf("Project directory changed to: %s", selectedDir)
 
+	// Add to recent projects
+	projectName := filepath.Base(selectedDir)
+	if err := config.AddRecentProject(selectedDir, projectName, a.targetPort); err != nil {
+		log.Printf("Warning: Failed to add to recent projects: %v", err)
+	}
+
 	return selectedDir, nil
+}
+
+// GetRecentProjects returns the list of recently opened projects
+func (a *App) GetRecentProjects() ([]config.RecentProject, error) {
+	return config.GetRecentProjects()
+}
+
+// AddRecentProject adds a project to the recent projects list
+func (a *App) AddRecentProject(path, name string, targetPort int) error {
+	return config.AddRecentProject(path, name, targetPort)
+}
+
+// RemoveRecentProject removes a project from the recent projects list
+func (a *App) RemoveRecentProject(path string) error {
+	return config.RemoveRecentProject(path)
+}
+
+// OpenRecentProject loads a recent project
+func (a *App) OpenRecentProject(path string, targetPort int) string {
+	// Verify directory still exists
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return fmt.Sprintf("Error: Project directory no longer exists: %s", path)
+	}
+
+	a.projectDir = path
+	a.targetPort = targetPort
+	log.Printf("Opened recent project: %s", path)
+
+	// Update recent projects list
+	projectName := filepath.Base(path)
+	if err := config.AddRecentProject(path, projectName, targetPort); err != nil {
+		log.Printf("Warning: Failed to update recent projects: %v", err)
+	}
+
+	return fmt.Sprintf("Project loaded: %s", path)
+}
+
+// DetectRunningPorts detects all running dev servers on common ports
+func (a *App) DetectRunningPorts() []int {
+	return proxy.DetectAllRunningPorts()
+}
+
+// DetectPortsWithInfo detects all running dev servers with process and folder information
+func (a *App) DetectPortsWithInfo() []proxy.PortInfo {
+	return proxy.DetectPortsWithInfo()
 }
 
 // ensureAPIKey checks for Anthropic API key

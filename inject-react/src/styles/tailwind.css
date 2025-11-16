@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom animations */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideOut {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.vc-spin {
+  animation: spin 1s linear infinite;
+}
+
+.vc-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.vc-slide-in {
+  animation: slideIn 0.3s ease-in-out;
+}
+
+.vc-slide-out {
+  animation: slideOut 0.3s ease-in-out;
+}
+
+/* Custom scrollbar for panels */
+.vc-custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.vc-custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+
+.vc-custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(168, 85, 247, 0.5);
+  border-radius: 4px;
+}
+
+.vc-custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(168, 85, 247, 0.7);
+}
+
+/* Prevent text selection during drag operations */
+.vc-no-select {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* Cursor styles */
+.vc-cursor-grab {
+  cursor: grab;
+}
+
+.vc-cursor-grabbing {
+  cursor: grabbing;
+}
+
+/* Focus styles */
+.vc-focus-ring:focus {
+  outline: 2px solid rgba(168, 85, 247, 0.5);
+  outline-offset: 2px;
+}
+
+/* Shadow DOM reset - only apply to our components */
+#layrr-root * {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+#layrr-root {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Transitions */
+.vc-transition-all {
+  transition: all 0.2s ease-in-out;
+}
+
+.vc-transition-opacity {
+  transition: opacity 0.3s ease-in-out;
+}
+
+.vc-transition-transform {
+  transition: transform 0.2s ease-in-out;
+}
+
+/* Button hover effects */
+.vc-button-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+}
+
+.vc-button-hover:active {
+  transform: translateY(0);
+}
+
+/* Modal backdrop blur */
+.vc-backdrop-blur {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* Gradient backgrounds */
+.vc-gradient-purple {
+  background: linear-gradient(135deg, rgb(168, 85, 247), rgb(126, 34, 206));
+}
+
+.vc-gradient-pink {
+  background: linear-gradient(135deg, rgb(240, 147, 251), rgb(245, 87, 108));
+}
+
+/* Status colors */
+.vc-status-processing {
+  background-color: rgba(168, 85, 247, 0.1);
+  border-color: rgba(168, 85, 247, 0.3);
+  color: rgb(168, 85, 247);
+}
+
+.vc-status-success {
+  background-color: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: rgb(34, 197, 94);
+}
+
+.vc-status-error {
+  background-color: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: rgb(239, 68, 68);
+}

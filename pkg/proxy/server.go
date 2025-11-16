@@ -21,8 +21,16 @@ import (
 	"github.com/thetronjohnson/layrr/pkg/watcher"
 )
 
+//go:embed inject-react-dist-minimal/inject-minimal.js
+var minimalAssets embed.FS
+
+// Full React assets (kept for future features)
+//go:embed inject-react-dist/inject-react.js inject-react-dist/assets/*.css
+var reactAssets embed.FS
+
+// Legacy Alpine.js assets (kept for reference/rollback)
 //go:embed inject.js inject-utils.js inject.css alpine.min.js tailwind.min.js
-var clientAssets embed.FS
+var legacyAssets embed.FS
 
 //go:embed cursor.svg
 var cursorAsset []byte
@@ -95,12 +103,20 @@ func (s *Server) Start() error {
 	// Set up HTTP handlers
 	mux := http.NewServeMux()
 
-	// Serve all client assets
-	mux.HandleFunc("/__layrr/alpine.min.js", s.handleAsset("alpine.min.js", "application/javascript"))
-	mux.HandleFunc("/__layrr/tailwind.min.js", s.handleAsset("tailwind.min.js", "application/javascript"))
-	mux.HandleFunc("/__layrr/inject.css", s.handleAsset("inject.css", "text/css"))
-	mux.HandleFunc("/__layrr/inject-utils.js", s.handleAsset("inject-utils.js", "application/javascript"))
-	mux.HandleFunc("/__layrr/inject.js", s.handleAsset("inject.js", "application/javascript"))
+	// Serve minimal React bundle (hover + selection only, ~1.36 KB gzipped)
+	mux.HandleFunc("/__layrr/inject-minimal.js", s.handleMinimalAsset("inject-react-dist-minimal/inject-minimal.js", "application/javascript"))
+
+	// Full React bundle (kept for future features)
+	// mux.HandleFunc("/__layrr/inject-react.js", s.handleReactAsset("inject-react-dist/inject-react.js", "application/javascript"))
+	// mux.HandleFunc("/__layrr/assets/", s.handleReactAssetsDir())
+
+	// Legacy Alpine.js assets (kept for rollback if needed)
+	// Uncomment these and update inject.go to revert to Alpine.js
+	// mux.HandleFunc("/__layrr/alpine.min.js", s.handleLegacyAsset("alpine.min.js", "application/javascript"))
+	// mux.HandleFunc("/__layrr/tailwind.min.js", s.handleLegacyAsset("tailwind.min.js", "application/javascript"))
+	// mux.HandleFunc("/__layrr/inject.css", s.handleLegacyAsset("inject.css", "text/css"))
+	// mux.HandleFunc("/__layrr/inject-utils.js", s.handleLegacyAsset("inject-utils.js", "application/javascript"))
+	// mux.HandleFunc("/__layrr/inject.js", s.handleLegacyAsset("inject.js", "application/javascript"))
 
 	// Serve the custom cursor asset
 	mux.HandleFunc("/__layrr/cursor.svg", s.handleCursorAsset)
@@ -129,12 +145,72 @@ func (s *Server) Start() error {
 	return s.httpServer.ListenAndServe()
 }
 
-// handleAsset returns a handler function for serving embedded assets
-func (s *Server) handleAsset(filename, contentType string) http.HandlerFunc {
+// handleMinimalAsset returns a handler function for serving minimal bundle assets
+func (s *Server) handleMinimalAsset(filename, contentType string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		content, err := clientAssets.ReadFile(filename)
+		content, err := minimalAssets.ReadFile(filename)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to load asset: %s", filename), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Failed to load minimal asset: %s", filename), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(content)
+	}
+}
+
+// handleReactAsset returns a handler function for serving React bundle assets
+func (s *Server) handleReactAsset(filename, contentType string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		content, err := reactAssets.ReadFile(filename)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to load React asset: %s", filename), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(content)
+	}
+}
+
+// handleReactAssetsDir returns a handler for serving React CSS assets with hashed filenames
+func (s *Server) handleReactAssetsDir() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract filename from URL path (e.g., /__layrr/assets/inject-DFAa3EEP.css)
+		filename := strings.TrimPrefix(r.URL.Path, "/__layrr/")
+
+		// Try to read from inject-react-dist directory
+		fullPath := "inject-react-dist/" + strings.TrimPrefix(filename, "assets/")
+		if strings.HasPrefix(filename, "assets/") {
+			fullPath = "inject-react-dist/" + filename
+		}
+
+		content, err := reactAssets.ReadFile(fullPath)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to load React CSS asset: %s", filename), http.StatusNotFound)
+			return
+		}
+
+		// Determine content type
+		contentType := "text/css"
+		if strings.HasSuffix(filename, ".js") {
+			contentType = "application/javascript"
+		}
+
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Cache-Control", "public, max-age=31536000") // Cache hashed assets for 1 year
+		w.Write(content)
+	}
+}
+
+// handleLegacyAsset returns a handler function for serving legacy Alpine.js assets (for rollback)
+func (s *Server) handleLegacyAsset(filename, contentType string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		content, err := legacyAssets.ReadFile(filename)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to load legacy asset: %s", filename), http.StatusInternalServerError)
 			return
 		}
 
@@ -935,4 +1011,21 @@ func DetectDevServer() (int, error) {
 	}
 
 	return 0, fmt.Errorf("no dev server found on common ports")
+}
+
+// DetectAllRunningPorts detects all running dev servers on common ports
+func DetectAllRunningPorts() []int {
+	commonPorts := []int{5173, 3000, 8080, 4200, 8000, 5000, 8888, 3001, 4000, 9000}
+	runningPorts := []int{}
+
+	for _, port := range commonPorts {
+		addr := fmt.Sprintf("localhost:%d", port)
+		conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			runningPorts = append(runningPorts, port)
+		}
+	}
+
+	return runningPorts
 }

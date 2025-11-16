@@ -1,11 +1,41 @@
-import { useState, useEffect } from 'react';
-import { StartProxy, StopProxy, GetProxyURL, GetStatus, GetProjectInfo, SelectProjectDirectory, SetAPIKey } from "../wailsjs/go/main/App";
+import { useState, useEffect, useRef } from 'react';
+import { StartProxy, StopProxy, GetProxyURL, GetStatus, GetProjectInfo, SelectProjectDirectory, SetAPIKey, GetRecentProjects, OpenRecentProject, DetectRunningPorts, DetectPortsWithInfo } from "../wailsjs/go/main/App";
+import ChatInput from './components/ChatInput';
+import WelcomeScreen from './components/WelcomeScreen';
+import { FolderOpen, Play, Stop, X } from '@phosphor-icons/react';
 
 interface ProjectInfo {
     projectDir: string;
     proxyPort: number;
     targetPort: number;
     serverActive: boolean;
+}
+
+interface SelectedElement {
+    tagName: string;
+    classes: string[];
+    id: string;
+    selector: string;
+    bounds: {
+        width: number;
+        height: number;
+        x: number;
+        y: number;
+    };
+}
+
+interface RecentProject {
+    path: string;
+    name: string;
+    lastOpened: string;
+    targetPort: number;
+}
+
+interface PortInfo {
+    port: number;
+    processName: string;
+    workDir: string;
+    pid: number;
 }
 
 function App() {
@@ -18,11 +48,90 @@ function App() {
     const [apiKeyInput, setApiKeyInput] = useState('');
     const [apiKeyError, setApiKeyError] = useState('');
 
+    // New sidebar UX state
+    const [isEditMode, setIsEditMode] = useState(false);
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null);
+    const [screenshot, setScreenshot] = useState<string | null>(null);
+    const [isCapturing, setIsCapturing] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const iframeRef = useRef<HTMLIFrameElement>(null);
+
+    // Target port configuration
+    const [targetPortInput, setTargetPortInput] = useState('');
+
+    // Welcome screen state
+    const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
+    const [selectedProjectForWelcome, setSelectedProjectForWelcome] = useState<{ path: string; name: string } | null>(null);
+    const [detectedPorts, setDetectedPorts] = useState<PortInfo[]>([]);
+
     // Load initial status
     useEffect(() => {
         loadStatus();
         loadProjectInfo();
+        loadRecentProjects();
     }, []);
+
+    // postMessage bridge for iframe communication
+    useEffect(() => {
+        const handleMessage = (event: MessageEvent) => {
+            const { type, payload } = event.data;
+
+            switch (type) {
+                case 'LAYRR_READY':
+                    console.log('[Sidebar] Minimal inject ready');
+                    break;
+                case 'ELEMENT_SELECTED':
+                    console.log('[Sidebar] Element selected:', payload);
+                    setSelectedElement(payload);
+                    setIsSelectionMode(false);
+                    break;
+            }
+        };
+
+        window.addEventListener('message', handleMessage);
+        return () => window.removeEventListener('message', handleMessage);
+    }, []);
+
+    // Sidebar control functions
+    const handleToggleEditMode = () => {
+        setIsEditMode(!isEditMode);
+        setIsSelectionMode(false);
+        setSelectedElement(null);
+    };
+
+    const handleSelectElement = () => {
+        setIsSelectionMode(true);
+        // Send message to iframe to enable selection mode
+        if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(
+                { type: 'ENABLE_SELECTION_MODE' },
+                '*'
+            );
+        }
+    };
+
+    const handleCaptureScreenshot = async () => {
+        setIsCapturing(true);
+        // TODO: Implement screenshot capture via Go backend
+        setTimeout(() => {
+            setIsCapturing(false);
+            // Mock screenshot for now
+            setScreenshot('data:image/png;base64,...');
+        }, 1000);
+    };
+
+    const handleSubmitPrompt = async (prompt: string) => {
+        if (!selectedElement) return;
+
+        setIsProcessing(true);
+        console.log('[Sidebar] Submitting prompt:', prompt, 'for element:', selectedElement.selector);
+
+        // TODO: Send to Go backend for AI processing
+        setTimeout(() => {
+            setIsProcessing(false);
+        }, 2000);
+    };
 
     const loadStatus = async () => {
         try {
@@ -46,12 +155,24 @@ function App() {
         }
     };
 
+    const loadRecentProjects = async () => {
+        try {
+            const projects = await GetRecentProjects();
+            setRecentProjects(projects as RecentProject[]);
+        } catch (error) {
+            console.error('Error loading recent projects:', error);
+        }
+    };
+
     const handleStartProxy = async () => {
         setIsLoading(true);
         setStatusMessage('Starting proxy server...');
         try {
+            // Parse target port (0 means auto-detect)
+            const port = targetPortInput ? parseInt(targetPortInput, 10) : 0;
+
             // Use current directory (empty string means use default)
-            const result = await StartProxy('');
+            const result = await StartProxy('', port);
             setStatusMessage(result);
 
             // Wait a bit for server to fully start
@@ -88,11 +209,153 @@ function App() {
             const selectedDir = await SelectProjectDirectory();
             if (selectedDir) {
                 await loadProjectInfo();
+                await loadRecentProjects();
+                const projectName = selectedDir.split('/').pop() || selectedDir;
+                setSelectedProjectForWelcome({ path: selectedDir, name: projectName });
+
+                // Detect running ports with folder info
+                const allPortsInfo = await DetectPortsWithInfo();
+
+                // Filter ports to only show those matching the selected project directory
+                const filteredPorts = (allPortsInfo as PortInfo[]).filter(portInfo => {
+                    if (!portInfo.workDir) return false;
+                    // Normalize paths for comparison (workDir already has ~ expanded by backend)
+                    const normalizedWorkDir = portInfo.workDir;
+                    const normalizedSelectedDir = selectedDir;
+                    return normalizedWorkDir.startsWith(normalizedSelectedDir) ||
+                           normalizedSelectedDir.startsWith(normalizedWorkDir);
+                });
+
+                setDetectedPorts(filteredPorts);
+
+                // If exactly one port found, auto-select it
+                if (filteredPorts.length === 1) {
+                    setTargetPortInput(filteredPorts[0].port.toString());
+                } else if (filteredPorts.length === 0) {
+                    setTargetPortInput('');
+                }
+
                 setStatusMessage(`Project directory: ${selectedDir}`);
             }
         } catch (error) {
             setStatusMessage(`Error selecting directory: ${error}`);
         }
+    };
+
+    const handleOpenRecentProject = async (path: string, targetPort: number) => {
+        try {
+            await OpenRecentProject(path, targetPort);
+            await loadProjectInfo();
+            await loadRecentProjects();
+
+            // Detect running ports with folder info
+            const allPortsInfo = await DetectPortsWithInfo();
+
+            // Filter ports to only show those matching the project path
+            const filteredPorts = (allPortsInfo as PortInfo[]).filter(portInfo => {
+                if (!portInfo.workDir) return false;
+                // Normalize paths for comparison (workDir already has ~ expanded by backend)
+                const normalizedWorkDir = portInfo.workDir;
+                const normalizedPath = path;
+                return normalizedWorkDir.startsWith(normalizedPath) ||
+                       normalizedPath.startsWith(normalizedWorkDir);
+            });
+
+            setDetectedPorts(filteredPorts);
+
+            // If exactly one port found, auto-select it; otherwise use saved port
+            if (filteredPorts.length === 1) {
+                setTargetPortInput(filteredPorts[0].port.toString());
+            } else if (filteredPorts.length > 1 && targetPort > 0 && filteredPorts.some(p => p.port === targetPort)) {
+                setTargetPortInput(targetPort.toString());
+            } else if (filteredPorts.length > 1) {
+                setTargetPortInput(''); // Let user choose
+            } else {
+                setTargetPortInput(targetPort > 0 ? targetPort.toString() : '');
+            }
+
+            const projectName = path.split('/').pop() || path;
+            setSelectedProjectForWelcome({ path, name: projectName });
+        } catch (error) {
+            setStatusMessage(`Error opening project: ${error}`);
+        }
+    };
+
+    const handleStartProxyFromWelcome = async (port?: string) => {
+        if (!selectedProjectForWelcome) return;
+
+        setIsLoading(true);
+        setStatusMessage('Starting proxy server...');
+        try {
+            // Parse target port - use provided port or current input
+            const targetPort = port ? parseInt(port, 10) : (targetPortInput ? parseInt(targetPortInput, 10) : 0);
+
+            // Use the selected project path
+            const result = await StartProxy(selectedProjectForWelcome.path, targetPort);
+            setStatusMessage(result);
+
+            // Wait a bit for server to fully start
+            setTimeout(async () => {
+                const url = await GetProxyURL();
+                setProxyURL(url);
+                setIsServerActive(true);
+                await loadProjectInfo();
+                setIsLoading(false);
+                setSelectedProjectForWelcome(null);
+            }, 1000);
+        } catch (error) {
+            setStatusMessage(`Error: ${error}`);
+            setIsLoading(false);
+        }
+    };
+
+    const handleRefreshPorts = async () => {
+        if (!selectedProjectForWelcome) return;
+
+        // Check for ports over 2 seconds
+        const checkInterval = 500; // Check every 500ms
+        const maxAttempts = 4; // 4 attempts = 2 seconds
+        let attempts = 0;
+
+        const checkPorts = async (): Promise<PortInfo[]> => {
+            const allPortsInfo = await DetectPortsWithInfo();
+
+            // Filter ports to only show those matching the selected project directory
+            const filteredPorts = (allPortsInfo as PortInfo[]).filter(portInfo => {
+                if (!portInfo.workDir) return false;
+                // Normalize paths for comparison (workDir already has ~ expanded by backend)
+                const normalizedWorkDir = portInfo.workDir;
+                const normalizedSelectedDir = selectedProjectForWelcome.path;
+                return normalizedWorkDir.startsWith(normalizedSelectedDir) ||
+                       normalizedSelectedDir.startsWith(normalizedWorkDir);
+            });
+
+            return filteredPorts;
+        };
+
+        // Keep checking for ports until found or timeout
+        while (attempts < maxAttempts) {
+            const filteredPorts = await checkPorts();
+
+            if (filteredPorts.length > 0) {
+                setDetectedPorts(filteredPorts);
+
+                // If exactly one port found, auto-select it
+                if (filteredPorts.length === 1) {
+                    setTargetPortInput(filteredPorts[0].port.toString());
+                }
+                return;
+            }
+
+            attempts++;
+            if (attempts < maxAttempts) {
+                await new Promise(resolve => setTimeout(resolve, checkInterval));
+            }
+        }
+
+        // No ports found after 2 seconds - reset
+        setDetectedPorts([]);
+        setTargetPortInput('');
     };
 
     const handleSaveAPIKey = async () => {
@@ -118,129 +381,131 @@ function App() {
         }
     };
 
-    return (
-        <div className="flex h-screen w-screen bg-slate-950 font-sans text-slate-200 overflow-hidden">
-            {/* Control Panel */}
-            <div className="w-[400px] bg-slate-850 border-r border-slate-700 flex flex-col p-6 overflow-y-auto">
-                <div className="mb-8">
-                    <h1 className="text-3xl font-bold bg-gradient-to-br from-purple-500 to-purple-700 bg-clip-text text-transparent mb-2">
-                        Layrr
-                    </h1>
-                    <p className="text-slate-400 text-sm">Visual Editor for Web Apps</p>
-                </div>
+    // Show welcome screen whenever server is not active
+    const showWelcome = !isServerActive;
 
-                <div className="bg-slate-950 rounded-xl p-4 mb-6 border border-slate-700">
-                    {projectInfo && (
-                        <>
-                            <div className="flex justify-between mb-3">
-                                <span className="text-slate-400 text-xs">Project:</span>
-                                <span
-                                    className="text-slate-200 text-xs font-mono max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap"
-                                    title={projectInfo.projectDir}
-                                >
-                                    {projectInfo.projectDir}
-                                </span>
+    return (
+        <div className="flex h-screen w-screen bg-primary font-sans text-gray-900 overflow-hidden">
+            {showWelcome ? (
+                /* Welcome Screen */
+                <WelcomeScreen
+                    recentProjects={recentProjects}
+                    onOpenProject={handleSelectDirectory}
+                    onOpenRecentProject={handleOpenRecentProject}
+                    selectedProject={selectedProjectForWelcome}
+                    onStartProxy={handleStartProxyFromWelcome}
+                    targetPortInput={targetPortInput}
+                    onTargetPortChange={setTargetPortInput}
+                    detectedPorts={detectedPorts}
+                    onRefreshPorts={handleRefreshPorts}
+                />
+            ) : (
+                <>
+                    {/* Preview Panel (Left Side) */}
+                    <div className="flex-1 flex items-center justify-center bg-primary relative">
+                        {isServerActive && proxyURL ? (
+                            <iframe
+                                ref={iframeRef}
+                                src={proxyURL}
+                                title="App Preview"
+                                className="w-full h-full border-0 bg-white"
+                                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
+                            />
+                        ) : (
+                            <div className="flex items-center justify-center w-full h-full">
+                                <div className="text-center text-slate-600">
+                                    <svg
+                                        width="120"
+                                        height="120"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="1.5"
+                                        className="mb-6 opacity-30 mx-auto"
+                                    >
+                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                        <line x1="9" y1="9" x2="15" y2="9"></line>
+                                        <line x1="9" y1="15" x2="15" y2="15"></line>
+                                    </svg>
+                                    <h2 className="text-2xl mb-2 text-slate-500">No Preview Available</h2>
+                                    <p className="text-sm text-slate-600">Start the proxy server to see your app here</p>
+                                </div>
                             </div>
-                            {projectInfo.targetPort > 0 && (
-                                <div className="flex justify-between mb-0">
-                                    <span className="text-slate-400 text-xs">Dev Server:</span>
-                                    <span className="text-slate-200 text-xs font-mono">
-                                        localhost:{projectInfo.targetPort}
-                                    </span>
+                        )}
+                    </div>
+
+                    {/* Control Panel (Right Side) */}
+                    <div className="w-[400px] bg-primary border-l border flex flex-col overflow-hidden rounded-l-xl">
+                        {/* Scrollable Content Area */}
+                        <div className="flex-1 overflow-y-auto p-6">
+                            {/* Top Right Icon Button */}
+                            {isServerActive && (
+                                <div className="mb-6 flex justify-end">
+                                    <button
+                                        onClick={handleStopProxy}
+                                        disabled={isLoading}
+                                        className="p-2 rounded-md transition-all hover:bg-primary-dark disabled:opacity-50"
+                                        title="Stop Proxy"
+                                    >
+                                        <Stop size={20} weight="bold" className="text-gray-700" />
+                                    </button>
                                 </div>
                             )}
-                        </>
-                    )}
-                    <button
-                        className="w-full mt-3 bg-slate-700 text-slate-200 text-xs font-semibold py-2.5 px-4 rounded-lg transition-all hover:bg-slate-600 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-                        onClick={handleSelectDirectory}
-                        disabled={isServerActive}
-                    >
-                        📁 Change Directory
-                    </button>
-                </div>
 
-                <div className="mb-6">
-                    {!isServerActive ? (
-                        <button
-                            className="w-full bg-gradient-purple text-white py-3.5 px-6 rounded-lg text-sm font-semibold transition-all hover:-translate-y-0.5 hover:shadow-[0_10px_25px_rgba(102,126,234,0.3)] active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-                            onClick={handleStartProxy}
-                            disabled={isLoading}
-                        >
-                            {isLoading ? 'Starting...' : 'Start Proxy'}
-                        </button>
-                    ) : (
-                        <button
-                            className="w-full bg-gradient-pink text-white py-3.5 px-6 rounded-lg text-sm font-semibold transition-all hover:-translate-y-0.5 hover:shadow-[0_10px_25px_rgba(245,87,108,0.3)] active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-                            onClick={handleStopProxy}
-                            disabled={isLoading}
-                        >
-                            {isLoading ? 'Stopping...' : 'Stop Proxy'}
-                        </button>
-                    )}
-                </div>
+                            {/* Target Port Configuration */}
+                            {!isServerActive && (
+                                <div className="mb-6">
+                                    <label className="block text-gray-700 text-xs font-medium mb-2">
+                                        Target Port <span className="text-gray-500">(optional - leave blank for auto-detect)</span>
+                                    </label>
+                                    <input
+                                        type="number"
+                                        className="w-full px-4 py-2.5 bg-white border border rounded-lg text-gray-900 text-sm font-mono transition-all focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200 placeholder:text-gray-400"
+                                        placeholder="e.g., 3000"
+                                        value={targetPortInput}
+                                        onChange={(e) => setTargetPortInput(e.target.value)}
+                                        min="1"
+                                        max="65535"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-2">
+                                        Common ports: 3000 (React/Next.js), 5173 (Vite), 8080 (general)
+                                    </p>
+                                </div>
+                            )}
 
-                <div className={`bg-slate-950 rounded-xl p-4 mb-6 border ${isServerActive ? 'border-green-500' : 'border-slate-700'}`}>
-                    <div className="flex items-center gap-2 mb-2">
-                        <span className={`w-2 h-2 rounded-full animate-pulse ${isServerActive ? 'bg-green-500' : 'bg-slate-600'}`}></span>
-                        <span className="text-sm">{isServerActive ? 'Running' : 'Stopped'}</span>
-                    </div>
-                    <p className="text-slate-400 text-xs leading-relaxed">{statusMessage}</p>
-                </div>
+                            {!isServerActive && (
+                                <button
+                                    className="w-full bg-gradient-purple text-white py-3.5 px-6 rounded-lg text-sm font-semibold transition-all hover:-translate-y-0.5 hover:shadow-[0_10px_25px_rgba(102,126,234,0.3)] active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex items-center justify-center gap-2 mb-6"
+                                    onClick={handleStartProxy}
+                                    disabled={isLoading}
+                                >
+                                    <Play size={20} weight="fill" />
+                                    {isLoading ? 'Starting...' : 'Start Proxy'}
+                                </button>
+                            )}
 
-                <div className="bg-slate-950 rounded-xl p-4 border border-slate-700">
-                    <h3 className="text-base mb-3 text-slate-200">Instructions:</h3>
-                    <ol className="pl-5 text-slate-400 text-xs leading-loose list-decimal">
-                        <li className="mb-2">
-                            Make sure your dev server is running (e.g., <code className="bg-slate-850 px-1.5 py-0.5 rounded font-mono text-purple-400 text-xs">npm run dev</code>)
-                        </li>
-                        <li className="mb-2">Click "Start Proxy" to launch the visual editor</li>
-                        <li className="mb-2">Your app will appear in the preview below with editing tools</li>
-                        <li className="mb-0">Use the visual editor to modify your app</li>
-                    </ol>
-                </div>
-
-                <div className="mt-auto pt-4 border-t border-slate-700">
-                    <button
-                        className="w-full bg-transparent text-purple-400 text-xs font-semibold py-2 px-4 rounded-lg border border-slate-700 transition-all hover:bg-slate-850 hover:border-purple-400"
-                        onClick={() => setShowAPIKeyDialog(true)}
-                    >
-                        🔑 Set API Key
-                    </button>
-                </div>
-            </div>
-
-            {/* Preview Panel */}
-            <div className="flex-1 flex items-center justify-center bg-slate-950 relative">
-                {isServerActive && proxyURL ? (
-                    <iframe
-                        src={proxyURL}
-                        title="App Preview"
-                        className="w-full h-full border-0 bg-white"
-                        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
-                    />
-                ) : (
-                    <div className="flex items-center justify-center w-full h-full">
-                        <div className="text-center text-slate-600">
-                            <svg
-                                width="120"
-                                height="120"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.5"
-                                className="mb-6 opacity-30 mx-auto"
-                            >
-                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                                <line x1="9" y1="9" x2="15" y2="9"></line>
-                                <line x1="9" y1="15" x2="15" y2="15"></line>
-                            </svg>
-                            <h2 className="text-2xl mb-2 text-slate-500">No Preview Available</h2>
-                            <p className="text-sm text-slate-600">Start the proxy server to see your app here</p>
+                            {/* Minimal status indicator */}
+                            {(isLoading || statusMessage.includes('Error')) && (
+                                <div className="bg-white rounded-lg p-3 mb-4 border border">
+                                    <p className="text-gray-700 text-xs">{statusMessage}</p>
+                                </div>
+                            )}
                         </div>
+
+                        {/* Chat Input at Bottom */}
+                        {isServerActive && (
+                            <ChatInput
+                                selectedElement={selectedElement}
+                                isProcessing={isProcessing}
+                                isSelectionMode={isSelectionMode}
+                                onSelectElement={handleSelectElement}
+                                onSubmitPrompt={handleSubmitPrompt}
+                            />
+                        )}
+
                     </div>
-                )}
-            </div>
+                </>
+            )}
 
             {/* API Key Dialog */}
             {showAPIKeyDialog && (
@@ -249,16 +514,16 @@ function App() {
                     onClick={() => setShowAPIKeyDialog(false)}
                 >
                     <div
-                        className="bg-slate-850 rounded-2xl w-[90%] max-w-[500px] border border-slate-700 shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
+                        className="bg-primary-light rounded-2xl w-[90%] max-w-[500px] border border-primary-lighter shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="px-6 py-6 pb-4 border-b border-slate-700 flex justify-between items-center">
+                        <div className="px-6 py-6 pb-4 border-b border-primary-lighter flex justify-between items-center">
                             <h2 className="text-xl text-slate-200 m-0">Set Anthropic API Key</h2>
                             <button
-                                className="bg-transparent border-0 text-slate-400 text-2xl cursor-pointer p-0 w-8 h-8 flex items-center justify-center rounded transition-all hover:bg-slate-700 hover:text-slate-200"
+                                className="bg-transparent border-0 text-slate-400 cursor-pointer p-0 w-8 h-8 flex items-center justify-center rounded transition-all hover:bg-primary-lighter hover:text-slate-200"
                                 onClick={() => setShowAPIKeyDialog(false)}
                             >
-                                ✕
+                                <X size={24} weight="bold" />
                             </button>
                         </div>
                         <div className="p-6">
@@ -269,7 +534,7 @@ function App() {
                             </p>
                             <input
                                 type="password"
-                                className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 text-sm font-mono transition-all focus:outline-none focus:border-purple-500 focus:shadow-[0_0_0_3px_rgba(102,126,234,0.1)] placeholder:text-slate-600"
+                                className="w-full px-4 py-3 bg-primary border border-primary-lighter rounded-lg text-slate-200 text-sm font-mono transition-all focus:outline-none focus:border-purple-500 focus:shadow-[0_0_0_3px_rgba(102,126,234,0.1)] placeholder:text-slate-600"
                                 placeholder="sk-ant-..."
                                 value={apiKeyInput}
                                 onChange={(e) => setApiKeyInput(e.target.value)}
@@ -283,7 +548,7 @@ function App() {
                         </div>
                         <div className="px-6 py-4 pb-6 flex gap-3 justify-end">
                             <button
-                                className="px-6 py-2.5 bg-slate-700 text-slate-200 text-sm font-semibold rounded-lg min-w-[100px] transition-all hover:bg-slate-600"
+                                className="px-6 py-2.5 bg-primary-lighter text-slate-200 text-sm font-semibold rounded-lg min-w-[100px] transition-all hover:bg-[#35322b]"
                                 onClick={() => setShowAPIKeyDialog(false)}
                             >
                                 Cancel
