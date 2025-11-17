@@ -68,6 +68,11 @@ function App() {
     const [showGitHistoryModal, setShowGitHistoryModal] = useState(false);
     const [showCheckpointsPanel, setShowCheckpointsPanel] = useState(false);
     const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+    const [messageHistory, setMessageHistory] = useState<Array<{
+        message: string;
+        timestamp: Date;
+        element: string;
+    }>>([]);
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
     // Target port configuration
@@ -131,6 +136,18 @@ function App() {
 
     const handleClearSelection = () => {
         setSelectedElement(null);
+    };
+
+    const formatTimeAgo = (date: Date) => {
+        const now = new Date();
+        const diffMs = now.getTime() - date.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+
+        if (diffMins < 1) return 'just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     };
 
     const handleSelectElement = () => {
@@ -215,6 +232,16 @@ function App() {
         console.log('[Sidebar] Selected element:', selectedElement);
         console.log('[Sidebar] WebSocket connected?:', isConnected);
 
+        // Add to message history (keep max 9)
+        setMessageHistory(prev => {
+            const updated = [{
+                message: prompt,
+                timestamp: new Date(),
+                element: selectedElement.tagName
+            }, ...prev];
+            return updated.slice(0, 9);
+        });
+
         setIsProcessing(true);
 
         // Format message according to bridge.Message structure
@@ -264,6 +291,9 @@ function App() {
                     clearTimeout(timeoutId);
                     delete (window as any)[`timeout_${response.id}`];
                 }
+
+                // Refresh iframe to show changes
+                handleGitCheckout();
 
                 setIsProcessing(false);
                 setSelectedElement(null); // Clear selection after successful processing
@@ -746,6 +776,34 @@ function App() {
                                                 <p className="text-gray-700 text-xs">{statusMessage}</p>
                                             </div>
                                         )}
+
+                                        {/* Message History */}
+                                        {messageHistory.length > 0 && (
+                                            <div className="space-y-3">
+                                                <h3 className="text-xs font-semibold text-gray-600 mb-4">Recent Messages</h3>
+                                                {messageHistory.map((item, index) => {
+                                                    const timeAgo = formatTimeAgo(item.timestamp);
+                                                    return (
+                                                        <motion.div
+                                                            key={index}
+                                                            initial={{ opacity: 0, y: -10 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            transition={{ delay: index * 0.05 }}
+                                                            className="space-y-1"
+                                                        >
+                                                            <p className="text-xs text-gray-700 leading-relaxed">
+                                                                {item.message.length > 80 ? item.message.substring(0, 80) + '...' : item.message}
+                                                            </p>
+                                                            <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                                                                <span className="font-mono">{item.element}</span>
+                                                                <span>•</span>
+                                                                <span>{timeAgo}</span>
+                                                            </div>
+                                                        </motion.div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                     </div>
                                 </motion.div>
                             )}
@@ -784,7 +842,7 @@ function App() {
 
                         {/* Git Checkpoint Toast */}
                         <AnimatePresence>
-                            {toastMessage && (toastMessage.includes('Checkpoint') || toastMessage.includes('checkpoint')) && (
+                            {toastMessage && (toastMessage.includes('Checkpoint') || toastMessage.includes('checkpoint') || toastMessage.includes('Switched to')) && (
                                 <motion.div
                                     initial={{ y: 20, opacity: 0 }}
                                     animate={{ y: 0, opacity: 1 }}

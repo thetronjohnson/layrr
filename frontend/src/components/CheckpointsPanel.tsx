@@ -54,7 +54,7 @@ export default function CheckpointsPanel({ onCheckout, onSuccess }: CheckpointsP
         }
     };
 
-    const handleCheckout = async (commitHash: string, commitShortHash: string) => {
+    const handleCheckout = async (commitHash: string, commitShortHash: string, commitMessage: string) => {
         setSwitchingHash(commitShortHash);
         setIsSwitching(true);
         setError('');
@@ -62,7 +62,12 @@ export default function CheckpointsPanel({ onCheckout, onSuccess }: CheckpointsP
             await SwitchToGitCommit(commitHash);
             await loadCommits(); // Reload to update current commit indicator
             onCheckout(); // Trigger iframe refresh
-            onSuccess('Switched to checkpoint');
+
+            // Show informative toast with commit details
+            const truncatedMessage = commitMessage.length > 40
+                ? commitMessage.substring(0, 40) + '...'
+                : commitMessage;
+            onSuccess(`Switched to: ${truncatedMessage} (${commitShortHash})`);
         } catch (err) {
             setError(`Failed to switch commit: ${err}`);
         } finally {
@@ -244,7 +249,7 @@ export default function CheckpointsPanel({ onCheckout, onSuccess }: CheckpointsP
                                     } ${
                                         isSwitching && switchingHash === commit.shortHash ? 'opacity-50' : ''
                                     }`}
-                                    onClick={() => !isSwitching && handleCheckout(commit.hash, commit.shortHash)}
+                                    onClick={() => !isSwitching && handleCheckout(commit.hash, commit.shortHash, commit.message)}
                                 >
                                     <div className="flex items-center justify-between gap-3">
                                         {/* Left: Title with optional check icon */}

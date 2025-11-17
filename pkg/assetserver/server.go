@@ -243,10 +243,10 @@ func (s *Server) handleMessageWebSocket(w http.ResponseWriter, r *http.Request) 
 		fmt.Printf("[Asset Server] ⏳ Processing message ID %d...\n", msg.ID)
 		err = s.bridge.HandleMessage(msg)
 
-		// Send completion status with write deadline (30 seconds to handle slow connections)
+		// Send completion status with write deadline (2 minutes to handle slow connections)
 		if err != nil {
 			fmt.Printf("[Asset Server] ❌ Sending 'error' status for message ID %d: %v\n", msg.ID, err)
-			conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
+			conn.SetWriteDeadline(time.Now().Add(2 * time.Minute))
 			if writeErr := conn.WriteJSON(map[string]interface{}{
 				"id":     msg.ID,
 				"status": "error",
@@ -256,7 +256,7 @@ func (s *Server) handleMessageWebSocket(w http.ResponseWriter, r *http.Request) 
 			}
 		} else {
 			fmt.Printf("[Asset Server] 🎉 Sending 'complete' status for message ID %d\n", msg.ID)
-			conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
+			conn.SetWriteDeadline(time.Now().Add(2 * time.Minute))
 			if writeErr := conn.WriteJSON(map[string]interface{}{
 				"id":     msg.ID,
 				"status": "complete",
