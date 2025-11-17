@@ -5,7 +5,7 @@ import WelcomeScreen from './components/WelcomeScreen';
 import GitCheckpointModal from './components/GitCheckpointModal';
 import GitHistoryModal from './components/GitHistoryModal';
 import CheckpointsPanel from './components/CheckpointsPanel';
-import { FolderOpen, Play, Stop, X, ArrowLeft } from '@phosphor-icons/react';
+import { FolderOpen, Play, Stop, X, ArrowLeft, Gear, ClockCounterClockwise } from '@phosphor-icons/react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -67,6 +67,7 @@ function App() {
     const [showGitCheckpointModal, setShowGitCheckpointModal] = useState(false);
     const [showGitHistoryModal, setShowGitHistoryModal] = useState(false);
     const [showCheckpointsPanel, setShowCheckpointsPanel] = useState(false);
+    const [showSettingsPanel, setShowSettingsPanel] = useState(false);
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
     // Target port configuration
@@ -125,6 +126,10 @@ function App() {
     const handleToggleEditMode = () => {
         setIsEditMode(!isEditMode);
         setIsSelectionMode(false);
+        setSelectedElement(null);
+    };
+
+    const handleClearSelection = () => {
         setSelectedElement(null);
     };
 
@@ -617,7 +622,50 @@ function App() {
                     {/* Control Panel (Right Side) */}
                     <div className="w-[400px] bg-primary border-l border flex flex-col overflow-hidden rounded-l-xl">
                         <AnimatePresence mode="wait">
-                            {showCheckpointsPanel ? (
+                            {showSettingsPanel ? (
+                                /* Settings Panel View */
+                                <motion.div
+                                    key="settings"
+                                    initial={{ x: 20, opacity: 0 }}
+                                    animate={{ x: 0, opacity: 1 }}
+                                    exit={{ x: 20, opacity: 0 }}
+                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                    className="flex-1 overflow-hidden flex flex-col"
+                                >
+                                    {/* Back Button Header */}
+                                    <div className="px-4 py-3 flex items-center gap-2">
+                                        <motion.button
+                                            onClick={() => setShowSettingsPanel(false)}
+                                            className="p-2 rounded-md text-gray-700 hover:bg-primary-dark transition-all"
+                                            title="Back"
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
+                                        >
+                                            <ArrowLeft size={16} weight="bold" />
+                                        </motion.button>
+                                        <h2 className="text-sm font-semibold text-gray-900 m-0">Settings</h2>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto p-6">
+                                        {/* WebSocket Connection Status */}
+                                        {isServerActive && (
+                                            <div className="mb-4">
+                                                <div className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 ${
+                                                    isConnected
+                                                        ? 'bg-green-100 text-green-800'
+                                                        : 'bg-red-100 text-red-800'
+                                                }`}>
+                                                    <motion.span
+                                                        className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
+                                                        animate={{ scale: [1, 1.2, 1] }}
+                                                        transition={{ duration: 2, repeat: Infinity }}
+                                                    ></motion.span>
+                                                    {isConnected ? 'WebSocket Connected' : 'WebSocket Disconnected'}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </motion.div>
+                            ) : showCheckpointsPanel ? (
                                 /* Checkpoints Panel View */
                                 <motion.div
                                     key="checkpoints"
@@ -628,7 +676,7 @@ function App() {
                                     className="flex-1 overflow-hidden flex flex-col"
                                 >
                                     {/* Back Button Header */}
-                                    <div className="p-4 flex items-center gap-2">
+                                    <div className="px-4 py-3 flex items-center gap-2">
                                         <motion.button
                                             onClick={() => setShowCheckpointsPanel(false)}
                                             className="p-2 rounded-md text-gray-700 hover:bg-primary-dark transition-all"
@@ -655,32 +703,50 @@ function App() {
                                     animate={{ x: 0, opacity: 1 }}
                                     exit={{ x: -20, opacity: 0 }}
                                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                    className="flex-1 overflow-y-auto p-6"
+                                    className="flex-1 flex flex-col overflow-hidden"
                                 >
-                                    {/* WebSocket Connection Status */}
+                                    {/* Top Header with Checkpoints, Settings and Stop */}
                                     {isServerActive && (
-                                        <div className="mb-4">
-                                            <div className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 ${
-                                                isConnected
-                                                    ? 'bg-green-100 text-green-800'
-                                                    : 'bg-red-100 text-red-800'
-                                            }`}>
-                                                <motion.span
-                                                    className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
-                                                    animate={{ scale: [1, 1.2, 1] }}
-                                                    transition={{ duration: 2, repeat: Infinity }}
-                                                ></motion.span>
-                                                {isConnected ? 'WebSocket Connected' : 'WebSocket Disconnected'}
-                                            </div>
+                                        <div className="px-4 py-3 flex items-center justify-end gap-2">
+                                            <motion.button
+                                                onClick={() => setShowCheckpointsPanel(true)}
+                                                className="p-2 rounded-md text-gray-700 hover:bg-primary-dark transition-all"
+                                                title="View Checkpoints"
+                                                whileHover={{ scale: 1.05 }}
+                                                whileTap={{ scale: 0.95 }}
+                                            >
+                                                <ClockCounterClockwise size={16} weight="bold" />
+                                            </motion.button>
+                                            <motion.button
+                                                onClick={() => setShowSettingsPanel(true)}
+                                                className="p-2 rounded-md text-gray-700 hover:bg-primary-dark transition-all"
+                                                title="Settings"
+                                                whileHover={{ scale: 1.05 }}
+                                                whileTap={{ scale: 0.95 }}
+                                            >
+                                                <Gear size={16} weight="bold" />
+                                            </motion.button>
+                                            <motion.button
+                                                onClick={handleStopProxy}
+                                                disabled={isLoading}
+                                                className="p-2 rounded-md text-gray-700 hover:bg-primary-dark transition-all disabled:opacity-50"
+                                                title="Stop Proxy"
+                                                whileHover={{ scale: 1.05 }}
+                                                whileTap={{ scale: 0.95 }}
+                                            >
+                                                <Stop size={16} weight="bold" />
+                                            </motion.button>
                                         </div>
                                     )}
 
-                                    {/* Minimal status indicator */}
-                                    {(isLoading || statusMessage.includes('Error')) && (
-                                        <div className="bg-white rounded-lg p-3 mb-4 border border">
-                                            <p className="text-gray-700 text-xs">{statusMessage}</p>
-                                        </div>
-                                    )}
+                                    <div className="flex-1 overflow-y-auto p-6">
+                                        {/* Minimal status indicator */}
+                                        {(isLoading || statusMessage.includes('Error')) && (
+                                            <div className="bg-white rounded-lg p-3 mb-4 border border">
+                                                <p className="text-gray-700 text-xs">{statusMessage}</p>
+                                            </div>
+                                        )}
+                                    </div>
                                 </motion.div>
                             )}
                         </AnimatePresence>
@@ -736,7 +802,7 @@ function App() {
                         </AnimatePresence>
 
                         {/* Chat Input at Bottom */}
-                        {isServerActive && (
+                        {isServerActive && !showSettingsPanel && (
                             <ChatInput
                                 selectedElement={selectedElement}
                                 isProcessing={isProcessing}
@@ -744,14 +810,12 @@ function App() {
                                 isColorPickerMode={isColorPickerMode}
                                 showCheckpoints={showCheckpointsPanel}
                                 onSelectElement={handleSelectElement}
+                                onClearSelection={handleClearSelection}
                                 onColorPicker={handleColorPicker}
-                                onViewCheckpoints={() => setShowCheckpointsPanel(true)}
                                 onSubmitPrompt={handleSubmitPrompt}
                                 onCheckpointSaved={() => {
                                     setToastMessage('Checkpoint saved successfully');
                                 }}
-                                onStopProxy={handleStopProxy}
-                                isLoading={isLoading}
                             />
                         )}
 

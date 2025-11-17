@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { CursorClick, Image as ImageIcon, PaperPlaneRight, Eyedropper, Stop, ClockCounterClockwise } from '@phosphor-icons/react';
+import { CursorClick, Image as ImageIcon, PaperPlaneRight, Eyedropper } from '@phosphor-icons/react';
 import { CreateGitCheckpoint } from '../../wailsjs/go/main/App';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -17,12 +17,10 @@ interface ChatInputProps {
   isColorPickerMode: boolean;
   showCheckpoints?: boolean;
   onSelectElement: () => void;
+  onClearSelection?: () => void;
   onColorPicker: () => void;
-  onViewCheckpoints: () => void;
   onSubmitPrompt: (prompt: string) => void;
   onCheckpointSaved?: () => void;
-  onStopProxy?: () => void;
-  isLoading?: boolean;
 }
 
 export default function ChatInput({
@@ -32,12 +30,10 @@ export default function ChatInput({
   isColorPickerMode,
   showCheckpoints = false,
   onSelectElement,
+  onClearSelection,
   onColorPicker,
-  onViewCheckpoints,
   onSubmitPrompt,
-  onCheckpointSaved,
-  onStopProxy,
-  isLoading
+  onCheckpointSaved
 }: ChatInputProps) {
   const [prompt, setPrompt] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -115,9 +111,9 @@ export default function ChatInput({
 
   return (
     <div className="border-t border bg-primary">
-      {/* Selected Element Preview */}
+      {/* Selected Element Preview - Hidden when checkpoints view is shown */}
       <AnimatePresence>
-        {selectedElement && (
+        {selectedElement && !showCheckpoints && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
@@ -128,8 +124,17 @@ export default function ChatInput({
             <motion.div
               initial={{ y: -10 }}
               animate={{ y: 0 }}
-              className="rounded-lg px-3 py-2 border border-dashed border-gray-400"
+              className="rounded-lg px-3 py-2 border border-dashed border-gray-400 relative"
             >
+              <motion.button
+                onClick={onClearSelection}
+                className="absolute -top-2 -right-2 w-5 h-5 bg-gray-400 text-white rounded-full flex items-center justify-center text-xs hover:bg-gray-500 transition-colors"
+                title="Clear selection"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                ×
+              </motion.button>
               <p className="text-xs font-medium text-gray-900">
                 Selected: <span className="font-mono">{selectedElement.tagName}</span>
               </p>
@@ -214,32 +219,6 @@ export default function ChatInput({
         >
           <Eyedropper size={16} weight="bold" />
         </motion.button>
-
-        {/* View Checkpoints Button */}
-        <motion.button
-          onClick={onViewCheckpoints}
-          disabled={isProcessing}
-          className="p-2 rounded-md text-gray-700 hover:bg-primary-dark transition-all disabled:opacity-50"
-          title="View Checkpoints"
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          <ClockCounterClockwise size={16} weight="bold" />
-        </motion.button>
-
-        {/* Stop Proxy Button */}
-        {onStopProxy && (
-          <motion.button
-            onClick={onStopProxy}
-            disabled={isLoading}
-            className="ml-auto p-2 rounded-md text-gray-700 hover:bg-primary-dark transition-all disabled:opacity-50"
-            title="Stop Proxy"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <Stop size={16} weight="bold" />
-          </motion.button>
-        )}
         </div>
       )}
 

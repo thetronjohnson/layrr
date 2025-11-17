@@ -146,7 +146,7 @@ export default function CheckpointsPanel({ onCheckout, onSuccess }: CheckpointsP
     return (
         <div className="flex flex-col h-full">
             {/* Search Bar */}
-            <div className="px-4 pb-4">
+            <div className="px-4 pt-4 pb-2">
                 <div className="relative">
                     <MagnifyingGlass size={14} weight="bold" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                     <input
@@ -167,7 +167,7 @@ export default function CheckpointsPanel({ onCheckout, onSuccess }: CheckpointsP
             )}
 
             {/* Checkpoint History */}
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto px-4 pb-4">
                 {isLoading ? (
                     <div className="flex items-center justify-center py-8">
                         <div className="animate-spin w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full"></div>
@@ -186,7 +186,7 @@ export default function CheckpointsPanel({ onCheckout, onSuccess }: CheckpointsP
                     <>
                         {/* Pagination Controls - Moved to top */}
                         {totalPages > 1 && (
-                            <div className="mb-4 flex items-center justify-end gap-2 text-xs text-gray-600">
+                            <div className="mb-3 flex items-center justify-end gap-2 text-xs text-gray-600">
                                 <span className="text-gray-500">
                                     {currentPage}/{totalPages}
                                 </span>
