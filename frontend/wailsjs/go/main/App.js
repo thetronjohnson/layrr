@@ -66,6 +66,10 @@ export function StartProxy(arg1, arg2) {
   return window['go']['main']['App']['StartProxy'](arg1, arg2);
 }
 
+export function StopClaudeProcessing() {
+  return window['go']['main']['App']['StopClaudeProcessing']();
+}
+
 export function StopProxy() {
   return window['go']['main']['App']['StopProxy']();
 }

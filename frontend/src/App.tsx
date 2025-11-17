@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { StartProxy, StopProxy, GetProxyURL, GetStatus, GetProjectInfo, SelectProjectDirectory, SetAPIKey, GetRecentProjects, OpenRecentProject, DetectRunningPorts, DetectPortsWithInfo } from "../wailsjs/go/main/App";
+import { StartProxy, StopProxy, GetProxyURL, GetStatus, GetProjectInfo, SelectProjectDirectory, SetAPIKey, GetRecentProjects, OpenRecentProject, DetectRunningPorts, DetectPortsWithInfo, StopClaudeProcessing } from "../wailsjs/go/main/App";
 import ChatInput from './components/ChatInput';
 import WelcomeScreen from './components/WelcomeScreen';
 import GitCheckpointModal from './components/GitCheckpointModal';
 import GitHistoryModal from './components/GitHistoryModal';
 import CheckpointsPanel from './components/CheckpointsPanel';
-import { FolderOpen, Play, Stop, X, ArrowLeft, Gear, ClockCounterClockwise } from '@phosphor-icons/react';
+import { FolderOpen, Play, Stop, X, ArrowLeft, Gear, ClockCounterClockwise, ArrowsClockwise } from '@phosphor-icons/react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -307,7 +307,12 @@ function App() {
                     delete (window as any)[`timeout_${response.id}`];
                 }
 
-                setStatusMessage(`Error: ${response.error}`);
+                // Check if error is due to process being killed (user cancelled)
+                if (response.error && (response.error.includes('signal: killed') || response.error.includes('process was killed'))) {
+                    setToastMessage('Change cancelled');
+                } else {
+                    setStatusMessage(`Error: ${response.error}`);
+                }
                 setIsProcessing(false);
             }
         });
@@ -679,17 +684,28 @@ function App() {
                                         {/* WebSocket Connection Status */}
                                         {isServerActive && (
                                             <div className="mb-4">
-                                                <div className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 ${
-                                                    isConnected
-                                                        ? 'bg-green-100 text-green-800'
-                                                        : 'bg-red-100 text-red-800'
-                                                }`}>
-                                                    <motion.span
-                                                        className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
-                                                        animate={{ scale: [1, 1.2, 1] }}
-                                                        transition={{ duration: 2, repeat: Infinity }}
-                                                    ></motion.span>
-                                                    {isConnected ? 'WebSocket Connected' : 'WebSocket Disconnected'}
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2 text-xs font-medium">
+                                                        <motion.span
+                                                            className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
+                                                            animate={{ scale: [1, 1.2, 1] }}
+                                                            transition={{ duration: 2, repeat: Infinity }}
+                                                        ></motion.span>
+                                                        <span className={isConnected ? 'text-green-800' : 'text-red-800'}>
+                                                            {isConnected ? 'Claude Code Connected' : 'Connection Lost'}
+                                                        </span>
+                                                    </div>
+                                                    {!isConnected && (
+                                                        <motion.button
+                                                            onClick={() => window.location.reload()}
+                                                            className="p-1.5 rounded-md text-gray-700 hover:bg-primary-dark transition-all"
+                                                            title="Reconnect"
+                                                            whileHover={{ scale: 1.05 }}
+                                                            whileTap={{ scale: 0.95 }}
+                                                        >
+                                                            <ArrowsClockwise size={14} weight="bold" />
+                                                        </motion.button>
+                                                    )}
                                                 </div>
                                             </div>
                                         )}
@@ -777,6 +793,56 @@ function App() {
                                             </div>
                                         )}
 
+                                        {/* Empty State - Getting Started Guide */}
+                                        {messageHistory.length === 0 && !isLoading && !statusMessage.includes('Error') && (
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 20 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                transition={{ delay: 0.2 }}
+                                                className="space-y-4"
+                                            >
+                                                <h3 className="text-sm font-semibold text-gray-700">Getting Started</h3>
+                                                <div className="space-y-3">
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
+                                                            <span className="text-xs font-bold text-gray-600">1</span>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs text-gray-700 font-medium">Select an Element</p>
+                                                            <p className="text-xs text-gray-500 mt-1">Click the cursor icon below to enable element selection</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
+                                                            <span className="text-xs font-bold text-gray-600">2</span>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs text-gray-700 font-medium">Describe Changes</p>
+                                                            <p className="text-xs text-gray-500 mt-1">Tell Claude what you want to modify about the selected element</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
+                                                            <span className="text-xs font-bold text-gray-600">3</span>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs text-gray-700 font-medium">See Changes Live</p>
+                                                            <p className="text-xs text-gray-500 mt-1">Watch your changes appear in real-time on the preview</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
+                                                            <span className="text-xs font-bold text-gray-600">4</span>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs text-gray-700 font-medium">Save Checkpoints</p>
+                                                            <p className="text-xs text-gray-500 mt-1">Click the clock icon above to view and switch between saved versions</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </motion.div>
+                                        )}
+
                                         {/* Message History */}
                                         {messageHistory.length > 0 && (
                                             <div className="space-y-3">
@@ -840,9 +906,9 @@ function App() {
                             )}
                         </AnimatePresence>
 
-                        {/* Git Checkpoint Toast */}
+                        {/* General Toast (Checkpoints, Processing, etc.) */}
                         <AnimatePresence>
-                            {toastMessage && (toastMessage.includes('Checkpoint') || toastMessage.includes('checkpoint') || toastMessage.includes('Switched to')) && (
+                            {toastMessage && (toastMessage.includes('Checkpoint') || toastMessage.includes('checkpoint') || toastMessage.includes('Switched to') || toastMessage.includes('Processing stopped') || toastMessage.includes('Change cancelled')) && (
                                 <motion.div
                                     initial={{ y: 20, opacity: 0 }}
                                     animate={{ y: 0, opacity: 1 }}
@@ -873,6 +939,17 @@ function App() {
                                 onSubmitPrompt={handleSubmitPrompt}
                                 onCheckpointSaved={() => {
                                     setToastMessage('Checkpoint saved successfully');
+                                }}
+                                onRefreshIframe={handleGitCheckout}
+                                onStopProcessing={async () => {
+                                    try {
+                                        await StopClaudeProcessing();
+                                        setIsProcessing(false);
+                                        setToastMessage('Processing stopped');
+                                    } catch (err) {
+                                        console.error('Failed to stop processing:', err);
+                                        setToastMessage('Failed to stop processing');
+                                    }
                                 }}
                             />
                         )}

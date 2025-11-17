@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { CursorClick, Image as ImageIcon, PaperPlaneRight, Eyedropper } from '@phosphor-icons/react';
+import { CursorClick, Image as ImageIcon, PaperPlaneRight, Eyedropper, ArrowClockwise, XCircle } from '@phosphor-icons/react';
 import { CreateGitCheckpoint } from '../../wailsjs/go/main/App';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -21,6 +21,8 @@ interface ChatInputProps {
   onColorPicker: () => void;
   onSubmitPrompt: (prompt: string) => void;
   onCheckpointSaved?: () => void;
+  onRefreshIframe?: () => void;
+  onStopProcessing?: () => void;
 }
 
 export default function ChatInput({
@@ -33,7 +35,9 @@ export default function ChatInput({
   onClearSelection,
   onColorPicker,
   onSubmitPrompt,
-  onCheckpointSaved
+  onCheckpointSaved,
+  onRefreshIframe,
+  onStopProcessing
 }: ChatInputProps) {
   const [prompt, setPrompt] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -203,7 +207,6 @@ export default function ChatInput({
           className="hidden"
         />
 
-
         {/* Color Picker Button */}
         <motion.button
           onClick={onColorPicker}
@@ -218,6 +221,37 @@ export default function ChatInput({
           whileTap={{ scale: 0.95 }}
         >
           <Eyedropper size={16} weight="bold" />
+        </motion.button>
+
+        {/* Spacer to push right-side buttons to the end */}
+        <div className="flex-1"></div>
+
+        {/* Refresh Iframe Button */}
+        <motion.button
+          onClick={onRefreshIframe}
+          disabled={isProcessing}
+          className="p-2 rounded-md text-gray-700 hover:bg-primary-dark transition-all disabled:opacity-50"
+          title="Refresh Preview"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          <ArrowClockwise size={16} weight="bold" />
+        </motion.button>
+
+        {/* Stop Processing Button - Only active when processing */}
+        <motion.button
+          onClick={onStopProcessing}
+          disabled={!isProcessing}
+          className={`p-2 rounded-md transition-all ${
+            isProcessing
+              ? 'text-red-600 hover:bg-red-50'
+              : 'text-gray-400 cursor-not-allowed opacity-50'
+          }`}
+          title={isProcessing ? 'Stop Processing' : 'No active processing'}
+          whileHover={isProcessing ? { scale: 1.05 } : {}}
+          whileTap={isProcessing ? { scale: 0.95 } : {}}
+        >
+          <XCircle size={16} weight="bold" />
         </motion.button>
         </div>
       )}

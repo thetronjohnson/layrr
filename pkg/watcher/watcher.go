@@ -52,23 +52,50 @@ func NewWatcher(projectDir string, verbose bool, display *status.Display) (*Watc
 
 // addDirRecursive adds a directory and all its subdirectories to the watcher
 func (w *Watcher) addDirRecursive(dir string) error {
-	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	// Get absolute path of the directory
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+
+	return filepath.Walk(absDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		// Skip node_modules, .git, dist, build directories
-		if info != nil {
+		// Get absolute path
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+
+		// Only watch paths that are within the project directory
+		// Skip the Layrr app's own directories
+		if !filepath.HasPrefix(absPath, absDir) {
+			return filepath.SkipDir
+		}
+
+		// Skip node_modules, .git, dist, build, wailsjs directories
+		if info != nil && info.IsDir() {
 			name := filepath.Base(path)
-			if name == "node_modules" || name == ".git" || name == "dist" || name == "build" || name == ".next" {
+			if name == "node_modules" || name == ".git" || name == "dist" || name == "build" || name == ".next" || name == "wailsjs" {
+				if w.verbose {
+					fmt.Printf("[Watcher] Skipping directory: %s\n", path)
+				}
 				return filepath.SkipDir
 			}
 		}
 
-		// Add directory to watcher
-		if err := w.fsWatcher.Add(path); err != nil {
-			if w.verbose {
-				fmt.Printf("[Watcher] Failed to watch %s: %v\n", path, err)
+		// Only add directories (not individual files)
+		if info != nil && info.IsDir() {
+			if err := w.fsWatcher.Add(path); err != nil {
+				if w.verbose {
+					fmt.Printf("[Watcher] Failed to watch %s: %v\n", path, err)
+				}
+			} else {
+				if w.verbose {
+					fmt.Printf("[Watcher] Added directory to watcher: %s\n", path)
+				}
 			}
 		}
 

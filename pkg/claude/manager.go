@@ -15,6 +15,8 @@ type Manager struct {
 	projectDir string
 	mu         sync.Mutex
 	verbose    bool
+	currentCmd *exec.Cmd
+	cmdMu      sync.Mutex
 }
 
 // NewManager creates a new manager for Claude Code
@@ -62,8 +64,16 @@ func (m *Manager) SendMessage(message string) error {
 	// Discard stderr to keep terminal clean (only TUI output)
 	cmd.Stderr = nil
 
+	// Store reference to current command so it can be stopped
+	m.cmdMu.Lock()
+	m.currentCmd = cmd
+	m.cmdMu.Unlock()
+
 	// Start the command
 	if err := cmd.Start(); err != nil {
+		m.cmdMu.Lock()
+		m.currentCmd = nil
+		m.cmdMu.Unlock()
 		return fmt.Errorf("failed to start Claude Code: %w", err)
 	}
 
@@ -82,6 +92,11 @@ func (m *Manager) SendMessage(message string) error {
 	// Wait for command to complete
 	waitErr := cmd.Wait()
 
+	// Clear current command reference
+	m.cmdMu.Lock()
+	m.currentCmd = nil
+	m.cmdMu.Unlock()
+
 	if waitErr != nil {
 		fmt.Printf("[Claude Manager] ❌ Command failed with error: %v\n", waitErr)
 		return fmt.Errorf("Claude Code execution failed: %w", waitErr)
@@ -90,6 +105,27 @@ func (m *Manager) SendMessage(message string) error {
 	fmt.Printf("[Claude Manager] ✅ Command completed successfully\n")
 	fmt.Printf("[Claude Manager] 📊 Processed %d output lines\n", lineCount)
 	fmt.Printf("[Claude Manager] 🎉 === CLAUDE CODE EXECUTION COMPLETE ===\n\n")
+	return nil
+}
+
+// Stop kills the currently running Claude Code process
+func (m *Manager) Stop() error {
+	m.cmdMu.Lock()
+	defer m.cmdMu.Unlock()
+
+	if m.currentCmd == nil || m.currentCmd.Process == nil {
+		return fmt.Errorf("no Claude Code process is currently running")
+	}
+
+	fmt.Printf("[Claude Manager] 🛑 Stopping Claude Code process (PID: %d)...\n", m.currentCmd.Process.Pid)
+
+	// Kill the process
+	if err := m.currentCmd.Process.Kill(); err != nil {
+		return fmt.Errorf("failed to kill process: %w", err)
+	}
+
+	fmt.Printf("[Claude Manager] ✅ Claude Code process stopped\n")
+	m.currentCmd = nil
 	return nil
 }
 

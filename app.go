@@ -362,3 +362,12 @@ func (a *App) GetStatus() map[string]interface{} {
 		"targetPort":   a.targetPort,
 	}
 }
+
+// StopClaudeProcessing stops the currently running Claude Code process
+func (a *App) StopClaudeProcessing() error {
+	if a.claudeManager == nil {
+		return fmt.Errorf("Claude manager not initialized")
+	}
+
+	return a.claudeManager.Stop()
+}

@@ -36,6 +36,8 @@ export function SetAPIKey(arg1:string):Promise<void>;
 
 export function StartProxy(arg1:string,arg2:number):Promise<string>;
 
+export function StopClaudeProcessing():Promise<void>;
+
 export function StopProxy():Promise<string>;
 
 export function SwitchToGitCommit(arg1:string):Promise<void>;
