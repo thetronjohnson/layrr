@@ -505,8 +505,8 @@ function App() {
                     // Normalize paths for comparison (workDir already has ~ expanded by backend)
                     const normalizedWorkDir = portInfo.workDir;
                     const normalizedSelectedDir = selectedDir;
-                    return normalizedWorkDir.startsWith(normalizedSelectedDir) ||
-                           normalizedSelectedDir.startsWith(normalizedWorkDir);
+                    // Only show ports whose working directory is within the selected directory
+                    return normalizedWorkDir.startsWith(normalizedSelectedDir);
                 });
 
                 setDetectedPorts(filteredPorts);
@@ -540,8 +540,8 @@ function App() {
                 // Normalize paths for comparison (workDir already has ~ expanded by backend)
                 const normalizedWorkDir = portInfo.workDir;
                 const normalizedPath = path;
-                return normalizedWorkDir.startsWith(normalizedPath) ||
-                       normalizedPath.startsWith(normalizedWorkDir);
+                // Only show ports whose working directory is within the selected directory
+                return normalizedWorkDir.startsWith(normalizedPath);
             });
 
             setDetectedPorts(filteredPorts);

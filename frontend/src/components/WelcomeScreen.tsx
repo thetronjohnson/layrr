@@ -113,16 +113,16 @@ export default function WelcomeScreen({
                         <span className="text-gray-900 text-sm font-mono">
                           :{portInfo.port}
                         </span>
-                        <button
+                        <span
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
                             onStartProxy(portInfo.port.toString());
                           }}
-                          className="bg-button text-white py-1.5 px-6 rounded-md text-sm font-medium transition-all hover:opacity-90"
+                          className="text-gray-900 text-sm cursor-pointer hover:opacity-70 transition-opacity"
                         >
                           Open
-                        </button>
+                        </span>
                       </div>
                     ))}
                   </div>
