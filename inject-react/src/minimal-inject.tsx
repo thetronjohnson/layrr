@@ -16,12 +16,16 @@ interface ElementInfo {
  * 3. Color picker mode
  * 4. Resize mode with visual handles
  * 5. Communication with sidebar via postMessage
+ * 6. WebSocket communication with backend
  */
 class MinimalLayrr {
   private isSelectionMode = false;
   private isColorPickerMode = false;
   private hoveredElement: HTMLElement | null = null;
   private highlightOverlay: HTMLDivElement | null = null;
+  private ws: WebSocket | null = null;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
 
   constructor() {
     this.init();
@@ -32,6 +36,9 @@ class MinimalLayrr {
 
     // Create highlight overlay
     this.createHighlightOverlay();
+
+    // Connect to WebSocket
+    this.connectWebSocket();
 
     // Listen for messages from sidebar
     window.addEventListener('message', this.handleMessage.bind(this));
@@ -44,6 +51,53 @@ class MinimalLayrr {
     this.postMessage({ type: 'LAYRR_READY' });
 
     console.log('[Layrr Minimal] Ready');
+  }
+
+  private connectWebSocket() {
+    try {
+      const wsUrl = `ws://${window.location.host}/__layrr/ws/message`;
+      console.log('[Layrr Minimal] Connecting to WebSocket:', wsUrl);
+
+      this.ws = new WebSocket(wsUrl);
+
+      this.ws.onopen = () => {
+        console.log('[Layrr Minimal] ✅ WebSocket connected');
+        this.reconnectAttempts = 0;
+        this.postMessage({ type: 'LAYRR_WS_CONNECTED' });
+      };
+
+      this.ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log('[Layrr Minimal] 📨 Message from backend:', data);
+
+        // Forward to parent window
+        this.postMessage({
+          type: 'MESSAGE_RESPONSE',
+          payload: data
+        });
+      };
+
+      this.ws.onerror = (error) => {
+        console.error('[Layrr Minimal] ❌ WebSocket error:', error);
+      };
+
+      this.ws.onclose = () => {
+        console.log('[Layrr Minimal] 🔌 WebSocket disconnected');
+        this.postMessage({ type: 'LAYRR_WS_DISCONNECTED' });
+
+        // Attempt to reconnect with exponential backoff
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+          const delay = 1000 * Math.pow(2, this.reconnectAttempts);
+          console.log(`[Layrr Minimal] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})`);
+          setTimeout(() => {
+            this.reconnectAttempts++;
+            this.connectWebSocket();
+          }, delay);
+        }
+      };
+    } catch (error) {
+      console.error('[Layrr Minimal] Failed to create WebSocket:', error);
+    }
   }
 
   private createHighlightOverlay() {
@@ -80,6 +134,29 @@ class MinimalLayrr {
       case 'HIGHLIGHT_ELEMENT':
         this.highlightElementBySelector(payload.selector);
         break;
+      case 'SEND_ELEMENT_MESSAGE':
+      case 'SEND_VISION_MESSAGE':
+        // Forward message to WebSocket backend
+        this.sendToWebSocket(payload);
+        break;
+    }
+  }
+
+  private sendToWebSocket(message: any) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      console.log('[Layrr Minimal] 📤 Sending to WebSocket:', message);
+      this.ws.send(JSON.stringify(message));
+    } else {
+      console.error('[Layrr Minimal] ❌ WebSocket not connected, cannot send message');
+      // Notify parent of error
+      this.postMessage({
+        type: 'MESSAGE_RESPONSE',
+        payload: {
+          id: message.id,
+          status: 'error',
+          error: 'WebSocket not connected'
+        }
+      });
     }
   }
 

@@ -75,6 +75,15 @@ func NewServer(port int, targetPort int, projectDir string, bridge *bridge.Bridg
 
 	// Set up ModifyResponse once during initialization (thread-safe)
 	proxy.ModifyResponse = func(resp *http.Response) error {
+		// Remove X-Frame-Options to allow iframe embedding in Wails app
+		resp.Header.Del("X-Frame-Options")
+		// Also remove Content-Security-Policy frame-ancestors if present
+		csp := resp.Header.Get("Content-Security-Policy")
+		if csp != "" {
+			// Remove frame-ancestors directive if present
+			resp.Header.Set("Content-Security-Policy", strings.ReplaceAll(csp, "frame-ancestors", ""))
+		}
+
 		// Only inject into HTML responses
 		contentType := resp.Header.Get("Content-Type")
 		if !strings.Contains(contentType, "text/html") {

@@ -42,6 +42,15 @@ func InjectScript(resp *http.Response, baseURL string) error {
 	resp.Header.Del("Content-Encoding")
 	resp.Header.Del("Transfer-Encoding")
 
+	// Remove X-Frame-Options to allow iframe embedding in Wails app
+	resp.Header.Del("X-Frame-Options")
+	// Also remove Content-Security-Policy frame-ancestors if present
+	csp := resp.Header.Get("Content-Security-Policy")
+	if csp != "" {
+		// Remove frame-ancestors directive if present
+		resp.Header.Set("Content-Security-Policy", strings.ReplaceAll(csp, "frame-ancestors", ""))
+	}
+
 	// Skip injection if body is empty or too small to be valid HTML
 	if len(body) < 10 {
 		resp.Body = io.NopCloser(bytes.NewReader(body))

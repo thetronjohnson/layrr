@@ -6,7 +6,6 @@ import GitCheckpointModal from './components/GitCheckpointModal';
 import GitHistoryModal from './components/GitHistoryModal';
 import CheckpointsPanel from './components/CheckpointsPanel';
 import { FolderOpen, Play, Stop, X, ArrowLeft, Gear, ClockCounterClockwise, ArrowsClockwise } from '@phosphor-icons/react';
-import { useWebSocket } from './hooks/useWebSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface ProjectInfo {
@@ -83,9 +82,10 @@ function App() {
     const [selectedProjectForWelcome, setSelectedProjectForWelcome] = useState<{ path: string; name: string } | null>(null);
     const [detectedPorts, setDetectedPorts] = useState<PortInfo[]>([]);
 
-    // WebSocket connection - now connects to asset server on 9998
-    const assetServerURL = 'http://localhost:9998';
-    const { isConnected, sendMessage } = useWebSocket(assetServerURL);
+    // IMPORTANT: Wails app should NOT connect to WebSocket
+    // Only the injected code in the user's browser (inside iframe) connects to WebSocket
+    // This connection status is for display purposes only - not used for actual communication
+    const [isConnected, setIsConnected] = useState(false);
 
     // Load initial status
     useEffect(() => {
@@ -102,6 +102,15 @@ function App() {
             switch (type) {
                 case 'LAYRR_READY':
                     console.log('[Sidebar] Minimal inject ready');
+                    setIsConnected(true); // Iframe is ready, WebSocket should be connected
+                    break;
+                case 'LAYRR_WS_CONNECTED':
+                    console.log('[Sidebar] WebSocket connected in iframe');
+                    setIsConnected(true);
+                    break;
+                case 'LAYRR_WS_DISCONNECTED':
+                    console.log('[Sidebar] WebSocket disconnected in iframe');
+                    setIsConnected(false);
                     break;
                 case 'ELEMENT_SELECTED':
                     console.log('[Sidebar] Element selected:', payload);
@@ -111,6 +120,25 @@ function App() {
                 case 'COLOR_PICKED':
                     console.log('[Sidebar] Color picked:', payload);
                     handleColorPicked(payload);
+                    break;
+                case 'MESSAGE_RESPONSE':
+                    console.log('[Sidebar] 📬 === RESPONSE FROM IFRAME ===');
+                    console.log('[Sidebar] Response:', payload);
+
+                    if (payload.status === 'complete') {
+                        console.log('[Sidebar] ✅ Processing complete!');
+                        handleGitCheckout();
+                        setIsProcessing(false);
+                        setSelectedElement(null);
+                    } else if (payload.status === 'error') {
+                        console.error('[Sidebar] ❌ Error:', payload.error);
+                        if (payload.error && (payload.error.includes('signal: killed') || payload.error.includes('process was killed'))) {
+                            setToastMessage('Change cancelled');
+                        } else {
+                            setStatusMessage(`Error: ${payload.error}`);
+                        }
+                        setIsProcessing(false);
+                    }
                     break;
             }
         };
@@ -257,28 +285,15 @@ function App() {
 
             console.log('[Sidebar] 📦 Formatted message for vision analysis:', { ...message, image: '[base64-data]' });
 
-            // Send via WebSocket with response handler
-            const messageId = sendMessage(message, (response) => {
-                console.log('[Sidebar] 📬 === VISION ANALYSIS RESPONSE ===');
-                console.log('[Sidebar] Status:', response.status);
-
-                if (response.status === 'complete') {
-                    console.log('[Sidebar] ✅ Vision analysis complete!');
-                    handleGitCheckout();
-                    setIsProcessing(false);
-                } else if (response.status === 'error') {
-                    console.error('[Sidebar] ❌ Error:', response.error);
-                    if (response.error && (response.error.includes('signal: killed') || response.error.includes('process was killed'))) {
-                        setToastMessage('Change cancelled');
-                    } else {
-                        setStatusMessage(`Error: ${response.error}`);
-                    }
-                    setIsProcessing(false);
-                }
-            });
-
-            if (!messageId) {
-                console.error('[Sidebar] ❌ Failed to send message - WebSocket not connected');
+            // Send via iframe postMessage (iframe will handle WebSocket)
+            if (iframeRef.current?.contentWindow) {
+                iframeRef.current.contentWindow.postMessage(
+                    { type: 'SEND_VISION_MESSAGE', payload: message },
+                    '*'
+                );
+                console.log('[Sidebar] ✅ Vision message sent to iframe');
+            } else {
+                console.error('[Sidebar] ❌ Iframe not available');
                 setIsProcessing(false);
             }
 
@@ -332,71 +347,16 @@ function App() {
 
         console.log('[Sidebar] 📦 Formatted message for Claude Code:', message);
 
-        // Send via WebSocket with response handler
-        const messageId = sendMessage(message, (response) => {
-            console.log('[Sidebar] 📬 === RESPONSE RECEIVED ===');
-            console.log('[Sidebar] Full response:', response);
-            console.log('[Sidebar] Status:', response.status);
-
-            if (response.status === 'acknowledged') {
-                console.log('[Sidebar] ✅ Message acknowledged by backend');
-            } else if (response.status === 'processing') {
-                console.log('[Sidebar] ⚙️ Backend is processing the request with Claude Code');
-                if (response.message) {
-                    console.log('[Sidebar] Processing message:', response.message);
-                }
-            } else if (response.status === 'complete') {
-                console.log('[Sidebar] ✅ Processing complete!');
-                console.log('[Sidebar] Result:', response.result);
-
-                // Clear timeout
-                const timeoutId = (window as any)[`timeout_${response.id}`];
-                if (timeoutId) {
-                    clearTimeout(timeoutId);
-                    delete (window as any)[`timeout_${response.id}`];
-                }
-
-                // Refresh iframe to show changes
-                handleGitCheckout();
-
-                setIsProcessing(false);
-                setSelectedElement(null); // Clear selection after successful processing
-            } else if (response.status === 'error') {
-                console.error('[Sidebar] ❌ Error from backend:', response.error);
-
-                // Clear timeout
-                const timeoutId = (window as any)[`timeout_${response.id}`];
-                if (timeoutId) {
-                    clearTimeout(timeoutId);
-                    delete (window as any)[`timeout_${response.id}`];
-                }
-
-                // Check if error is due to process being killed (user cancelled)
-                if (response.error && (response.error.includes('signal: killed') || response.error.includes('process was killed'))) {
-                    setToastMessage('Change cancelled');
-                } else {
-                    setStatusMessage(`Error: ${response.error}`);
-                }
-                setIsProcessing(false);
-            }
-        });
-
-        if (!messageId) {
-            console.error('[Sidebar] ❌ Failed to send message - WebSocket not connected');
-            setIsProcessing(false);
+        // Send via iframe postMessage (iframe will handle WebSocket)
+        if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(
+                { type: 'SEND_ELEMENT_MESSAGE', payload: message },
+                '*'
+            );
+            console.log('[Sidebar] ✅ Element message sent to iframe');
         } else {
-            console.log('[Sidebar] ✅ Message sent with ID:', messageId);
-
-            // Set a timeout to stop spinner if no completion message received within 5 minutes
-            const timeoutId = setTimeout(() => {
-                console.warn('[Sidebar] ⏱️ No completion message received within 5 minutes, stopping spinner');
-                setIsProcessing(false);
-                setStatusMessage('Request timed out - check if changes were applied');
-            }, 5 * 60 * 1000); // 5 minutes
-
-            // Store timeout ID to clear it if we get a response
-            // We'll clear it in the response handler
-            (window as any)[`timeout_${messageId}`] = timeoutId;
+            console.error('[Sidebar] ❌ Iframe not available');
+            setIsProcessing(false);
         }
     };
 
