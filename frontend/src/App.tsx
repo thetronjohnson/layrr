@@ -135,8 +135,13 @@ function App() {
                 case 'MESSAGE_RESPONSE':
                     console.log('[Sidebar] 📬 === RESPONSE FROM IFRAME ===');
                     console.log('[Sidebar] Response:', payload);
+                    console.log('[Sidebar] Response status:', payload.status);
+                    console.log('[Sidebar] Response id:', payload.id);
 
-                    if (payload.status === 'complete') {
+                    if (payload.status === 'received') {
+                        console.log('[Sidebar] 📨 Message received by backend, processing...');
+                        // Don't stop spinner yet, Claude Code is still working
+                    } else if (payload.status === 'complete') {
                         console.log('[Sidebar] ✅ Processing complete!');
                         handleGitCheckout();
                         setIsProcessing(false);
@@ -149,6 +154,8 @@ function App() {
                             setStatusMessage(`Error: ${payload.error}`);
                         }
                         setIsProcessing(false);
+                    } else {
+                        console.warn('[Sidebar] ⚠️ Unknown status:', payload.status);
                     }
                     break;
             }

@@ -138,9 +138,9 @@ export default function ImageGallery({
             {isReplacementMode ? 'Replace Image' : 'Image Gallery'}
           </h2>
         </div>
-        {isReplacementMode && currentImagePath && (
-          <div className="mt-2 text-xs text-gray-600">
-            Current: <span className="font-mono">{currentImagePath.split('/').pop()}</span>
+        {isReplacementMode && (
+          <div className="mt-2 text-xs text-gray-500">
+            Click on any image below to replace
           </div>
         )}
       </div>
@@ -186,16 +186,26 @@ export default function ImageGallery({
                 whileHover={{ scale: 1.02 }}
                 className={`relative rounded-lg overflow-hidden border-2 transition-all ${
                   isCurrentImage
-                    ? 'border-green-500 shadow-lg'
+                    ? 'border-green-500 shadow-lg cursor-not-allowed'
                     : selectedImagePath === image.path
                     ? 'border-blue-500 shadow-lg'
+                    : isReplacementMode
+                    ? 'border-gray-200 hover:border-purple-400 hover:shadow-lg cursor-pointer'
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
                 {/* Image */}
                 <div
                   className="aspect-square bg-gray-100 flex items-center justify-center cursor-pointer"
-                  onClick={() => !isReplacementMode && onSelectImage(image.path)}
+                  onClick={() => {
+                    if (isReplacementMode) {
+                      if (!isCurrentImage) {
+                        onReplaceImage?.(image.path);
+                      }
+                    } else {
+                      onSelectImage(image.path);
+                    }
+                  }}
                 >
                   <img
                     src={`http://localhost:9998${image.path}`}
@@ -234,21 +244,6 @@ export default function ImageGallery({
                   <p className="text-xs text-gray-500">
                     {formatFileSize(image.size)}
                   </p>
-
-                  {/* Replace Button in Replacement Mode */}
-                  {isReplacementMode && (
-                    <button
-                      onClick={() => onReplaceImage?.(image.path)}
-                      disabled={isCurrentImage}
-                      className={`mt-2 w-full px-2 py-1 text-xs font-medium rounded transition-colors ${
-                        isCurrentImage
-                          ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                          : 'bg-black text-white hover:bg-gray-800'
-                      }`}
-                    >
-                      {isCurrentImage ? 'Current Image' : 'Replace Image'}
-                    </button>
-                  )}
                 </div>
               </motion.div>
             );

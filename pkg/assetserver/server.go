@@ -129,9 +129,7 @@ func NewServer(port int, targetPort int, projectDir string, bridge *bridge.Bridg
 
 // notifyReload sends reload notification to all connected clients
 func (s *Server) notifyReload() {
-	if s.verbose {
-		fmt.Println("[Asset Server] 🔄 Notifying clients of file changes")
-	}
+	fmt.Printf("[Asset Server] 🔄 File change detected, notifying %d reload clients\n", len(s.reloadClients))
 
 	for client := range s.reloadClients {
 		err := client.WriteJSON(map[string]string{"type": "reload"})
@@ -261,10 +259,20 @@ func (s *Server) handleMessageWebSocket(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 
-		// Parse as regular bridge.Message
+		// Parse the wrapper first to extract payload
+		var wrapper struct {
+			Type    string          `json:"type"`
+			Payload json.RawMessage `json:"payload"`
+		}
+		if err := json.Unmarshal(message, &wrapper); err != nil {
+			fmt.Printf("[Asset Server] ❌ Failed to parse wrapper: %v\n", err)
+			continue
+		}
+
+		// Parse payload as bridge.Message
 		var msg bridge.Message
-		if err := json.Unmarshal(message, &msg); err != nil {
-			fmt.Printf("[Asset Server] ❌ Failed to parse as bridge.Message: %v\n", err)
+		if err := json.Unmarshal(wrapper.Payload, &msg); err != nil {
+			fmt.Printf("[Asset Server] ❌ Failed to parse payload as bridge.Message: %v\n", err)
 			continue
 		}
 
@@ -325,9 +333,7 @@ func (s *Server) handleReloadWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Add client to reload clients
 	s.reloadClients[conn] = true
 
-	if s.verbose {
-		fmt.Printf("[Asset Server] Reload WebSocket connected (total: %d)\n", len(s.reloadClients))
-	}
+	fmt.Printf("[Asset Server] ✅ Reload WebSocket connected (total: %d)\n", len(s.reloadClients))
 
 	// Keep connection alive and wait for close
 	for {

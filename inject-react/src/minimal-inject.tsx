@@ -102,8 +102,11 @@ class MinimalLayrr {
   private hoveredElement: HTMLElement | null = null;
   private highlightOverlay: HTMLDivElement | null = null;
   private ws: WebSocket | null = null;
+  private reloadWs: WebSocket | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
+  private pendingReload = false;
+  private isProcessing = false;
 
   constructor() {
     this.init();
@@ -117,6 +120,9 @@ class MinimalLayrr {
 
     // Connect to WebSocket
     this.connectWebSocket();
+
+    // Connect to reload WebSocket for hot reload
+    this.connectReloadWebSocket();
 
     // Listen for messages from sidebar
     window.addEventListener('message', this.handleMessage.bind(this));
@@ -147,12 +153,33 @@ class MinimalLayrr {
       this.ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         console.log('[Layrr Minimal] 📨 Message from backend:', data);
+        console.log('[Layrr Minimal] 📨 Message status:', data.status);
+        console.log('[Layrr Minimal] 📨 Message id:', data.id);
+
+        // Track processing state
+        if (data.status === 'received') {
+          this.isProcessing = true;
+          console.log('[Layrr Minimal] 🔄 Processing started...');
+        } else if (data.status === 'complete' || data.status === 'error') {
+          this.isProcessing = false;
+          console.log('[Layrr Minimal] ✅ Processing finished');
+
+          // If reload is pending, do it now after completion
+          if (this.pendingReload) {
+            console.log('[Layrr Minimal] 🔄 Executing pending reload...');
+            setTimeout(() => {
+              window.location.reload();
+            }, 500); // Small delay to ensure message reaches parent
+          }
+        }
 
         // Forward to parent window
-        this.postMessage({
+        const responseMessage = {
           type: 'MESSAGE_RESPONSE',
           payload: data
-        });
+        };
+        console.log('[Layrr Minimal] 📤 Forwarding to parent window:', responseMessage);
+        this.postMessage(responseMessage);
       };
 
       this.ws.onerror = (error) => {
@@ -175,6 +202,44 @@ class MinimalLayrr {
       };
     } catch (error) {
       console.error('[Layrr Minimal] Failed to create WebSocket:', error);
+    }
+  }
+
+  private connectReloadWebSocket() {
+    try {
+      const wsUrl = `ws://${window.location.host}/__layrr/ws/reload`;
+      console.log('[Layrr Minimal] Connecting to reload WebSocket:', wsUrl);
+
+      this.reloadWs = new WebSocket(wsUrl);
+
+      this.reloadWs.onopen = () => {
+        console.log('[Layrr Minimal] ✅ Reload WebSocket connected');
+      };
+
+      this.reloadWs.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'reload') {
+          // If we're currently processing a message, defer the reload
+          if (this.isProcessing) {
+            console.log('[Layrr Minimal] ⏳ Reload requested but processing in progress, will reload after completion...');
+            this.pendingReload = true;
+          } else {
+            console.log('[Layrr Minimal] 🔄 Reloading page due to file changes...');
+            window.location.reload();
+          }
+        }
+      };
+
+      this.reloadWs.onerror = (error) => {
+        console.error('[Layrr Minimal] ❌ Reload WebSocket error:', error);
+      };
+
+      this.reloadWs.onclose = () => {
+        console.log('[Layrr Minimal] 🔌 Reload WebSocket closed');
+        // Don't reconnect - if it closes, we probably don't need it anymore
+      };
+    } catch (error) {
+      console.error('[Layrr Minimal] Failed to create reload WebSocket:', error);
     }
   }
 
