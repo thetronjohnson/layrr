@@ -17,7 +17,7 @@ func BuildPrompt(ctx *analyzer.ProjectContext) string {
 	styling := ctx.Styling
 
 	// Build framework-specific instructions
-	frameworkInstructions := getFrameworkInstructions(framework, ctx.TypeScript)
+	frameworkInstructions := getFrameworkInstructions(ctx)
 
 	// Build styling-specific instructions
 	stylingInstructions := getStylingInstructions(styling)
@@ -63,8 +63,75 @@ Generate the component now:`,
 	)
 }
 
-func getFrameworkInstructions(framework string, typescript bool) string {
+func getFrameworkInstructions(ctx *analyzer.ProjectContext) string {
+	framework := ctx.Framework
+	typescript := ctx.TypeScript
+
 	switch framework {
+	case "nextjs":
+		// Next.js-specific instructions based on router type
+		if ctx.NextJSRouter == "app" {
+			return `**Next.js App Router Instructions:**
+CRITICAL - Server vs Client Components:
+- By DEFAULT, all components are Server Components (run on server only)
+- ONLY add 'use client' directive at the TOP of the file if the component:
+  * Uses React hooks (useState, useEffect, useContext, etc.)
+  * Uses browser APIs (window, document, localStorage, etc.)
+  * Has event handlers (onClick, onChange, onSubmit, etc.)
+  * Uses third-party libraries that depend on browser/hooks
+
+Next.js-Specific Components (ALWAYS use these):
+- Images: import Image from 'next/image' (NOT <img>)
+  * Requires width, height, and alt props
+  * Use fill prop for responsive images
+- Links: import Link from 'next/link' (NOT <a> for internal navigation)
+  * Wrap text/elements inside <Link href="/path">
+- Fonts: import { Inter, Roboto } from 'next/font/google'
+
+File Structure Rules:
+- This must be a page.tsx file for route pages
+- Export default function PageName() for pages
+- Export const metadata = {...} for page titles/descriptions
+- Can use async Server Components for data fetching
+
+Best Practices:
+- Keep components as Server Components unless interactivity is needed
+- Use Next.js Image component for automatic optimization
+- Use Next.js Link for client-side navigation
+- Preserve existing server component patterns in the codebase
+- Do NOT convert server components to client components unnecessarily`
+		} else if ctx.NextJSRouter == "pages" {
+			return `**Next.js Pages Router Instructions:**
+Next.js-Specific Components (ALWAYS use these):
+- Images: import Image from 'next/image' (NOT <img>)
+  * Requires width, height, and alt props
+- Links: import Link from 'next/link' (NOT <a> for internal navigation)
+- Head/Metadata: import Head from 'next/head' for page titles
+  * <Head><title>Page Title</title></Head>
+
+File Structure Rules:
+- Use index.tsx for homepage (pages/index.tsx)
+- Use pages/_app.tsx for global layout
+- Use pages/_document.tsx for HTML structure
+- Functional components with hooks are standard
+
+Data Fetching (if needed):
+- Use getServerSideProps for SSR
+- Use getStaticProps for SSG
+- Export these functions from page files
+
+Best Practices:
+- Use Next.js Image for automatic optimization
+- Use Next.js Link for fast client-side navigation
+- Use Head component for metadata
+- Follow Next.js Pages Router conventions`
+		}
+		// Fallback for Next.js without router detection
+		return `**Next.js Instructions:**
+- Use Next.js Image component (import Image from 'next/image')
+- Use Next.js Link component (import Link from 'next/link')
+- Follow Next.js best practices and conventions`
+
 	case "react":
 		if typescript {
 			return `**React/TypeScript Instructions:**

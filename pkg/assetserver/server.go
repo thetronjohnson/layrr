@@ -10,13 +10,17 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/thetronjohnson/layrr/pkg/ai"
+	"github.com/thetronjohnson/layrr/pkg/analyzer"
 	"github.com/thetronjohnson/layrr/pkg/bridge"
 	"github.com/thetronjohnson/layrr/pkg/config"
+	"github.com/thetronjohnson/layrr/pkg/proxy"
 	"github.com/thetronjohnson/layrr/pkg/watcher"
 )
 
@@ -155,6 +159,12 @@ func (s *Server) Start() error {
 	// WebSocket endpoint for reload notifications
 	mux.HandleFunc("/__layrr/ws/reload", s.handleReloadWebSocket)
 
+	// HTTP endpoint for immediate image upload
+	mux.HandleFunc("/__layrr/upload-image", s.handleImageUpload)
+
+	// HTTP endpoint for listing images in public directory
+	mux.HandleFunc("/__layrr/list-images", s.handleListImages)
+
 	// Proxy all other requests to dev server with script injection
 	mux.HandleFunc("/", s.handleProxyWithInjection)
 
@@ -235,14 +245,20 @@ func (s *Server) handleMessageWebSocket(w http.ResponseWriter, r *http.Request) 
 		fmt.Printf("[Asset Server] 📥 === RECEIVED MESSAGE FROM BROWSER ===\n")
 		fmt.Printf("[Asset Server] Raw message: %s\n", string(message))
 
-		// First, check if this is a design analysis request
+		// First, check message type
 		var msgType struct {
 			Type string `json:"type"`
 		}
-		if err := json.Unmarshal(message, &msgType); err == nil && msgType.Type == "analyze-design" {
-			// Handle design analysis
-			s.handleDesignAnalysis(conn, message)
-			continue
+		if err := json.Unmarshal(message, &msgType); err == nil {
+			if msgType.Type == "analyze-design" {
+				// Handle design analysis
+				s.handleDesignAnalysis(conn, message)
+				continue
+			} else if msgType.Type == "direct-image-replace" {
+				// Handle direct image replacement
+				s.handleDirectImageReplace(conn, message)
+				continue
+			}
 		}
 
 		// Parse as regular bridge.Message
@@ -440,4 +456,282 @@ Create a complete, production-ready component that matches this design EXACTLY. 
 			"status": "complete",
 		})
 	}
+}
+
+// handleListImages lists all images in the public directory
+func (s *Server) handleListImages(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("[AssetServer] 🔵 handleListImages called - Method: %s, Path: %s\n", r.Method, r.URL.Path)
+
+	// Set CORS headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	// Handle preflight OPTIONS request
+	if r.Method == http.MethodOptions {
+		fmt.Printf("[AssetServer] Handling OPTIONS preflight request\n")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Only accept GET requests
+	if r.Method != http.MethodGet {
+		fmt.Printf("[AssetServer] ❌ Method not allowed: %s\n", r.Method)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	fmt.Printf("[AssetServer] 📋 Listing images in public directory\n")
+	fmt.Printf("[AssetServer] Project directory: %s\n", s.projectDir)
+	fmt.Printf("[AssetServer] Looking for images in: %s/public\n", s.projectDir)
+
+	// List all images
+	images, err := proxy.ListImagesInPublic(s.projectDir)
+	if err != nil {
+		fmt.Printf("[AssetServer] ❌ Error listing images: %v\n", err)
+		http.Error(w, fmt.Sprintf("Failed to list images: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Printf("[AssetServer] ✅ Found %d images\n", len(images))
+	if len(images) > 0 {
+		fmt.Printf("[AssetServer] Image paths:\n")
+		for _, img := range images {
+			fmt.Printf("  - %s (%s, %d bytes)\n", img.Path, img.Name, img.Size)
+		}
+	}
+
+	// Return as JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(images)
+}
+
+// handleImageUpload handles immediate image upload when user selects a file
+func (s *Server) handleImageUpload(w http.ResponseWriter, r *http.Request) {
+	// Set CORS headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	// Handle preflight OPTIONS request
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Only accept POST requests
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse the JSON body
+	var requestData struct {
+		Image     string `json:"image"`
+		ImageType string `json:"imageType"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to parse request: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	fmt.Printf("[AssetServer] 📤 Image upload request received (type: %s, size: %d bytes)\n",
+		requestData.ImageType, len(requestData.Image))
+
+	// Validate image type
+	if !proxy.ValidateImageType(requestData.ImageType) {
+		http.Error(w, fmt.Sprintf("Unsupported image type: %s", requestData.ImageType), http.StatusBadRequest)
+		return
+	}
+
+	// Check if project is Next.js (for now, only Next.js is supported)
+	ctx, err := analyzer.AnalyzeProject(s.projectDir)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to analyze project: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if ctx.Framework != "nextjs" {
+		http.Error(w, "Image attachment is currently only supported for Next.js projects", http.StatusBadRequest)
+		return
+	}
+
+	// Save the image immediately
+	imagePath, err := proxy.SaveImageToProject(requestData.Image, requestData.ImageType, s.projectDir)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to save image: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Printf("[AssetServer] ✅ Image saved successfully: %s\n", imagePath)
+
+	// Return the path as JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"path": imagePath,
+	})
+}
+
+// handleDirectImageReplace handles direct image path replacement without Claude Code
+func (s *Server) handleDirectImageReplace(conn *websocket.Conn, message []byte) {
+	// Parse the request
+	var req struct {
+		Type    string `json:"type"`
+		Payload struct {
+			OldPath     string `json:"oldPath"`
+			NewPath     string `json:"newPath"`
+			Selector    string `json:"selector"`
+			ElementInfo struct {
+				TagName   string `json:"tagName"`
+				OuterHTML string `json:"outerHTML"`
+			} `json:"elementInfo"`
+		} `json:"payload"`
+	}
+
+	if err := json.Unmarshal(message, &req); err != nil {
+		fmt.Printf("[AssetServer] ❌ Failed to parse direct image replace request: %v\n", err)
+		conn.WriteJSON(map[string]interface{}{
+			"status": "error",
+			"error":  fmt.Sprintf("Failed to parse request: %v", err),
+		})
+		return
+	}
+
+	fmt.Printf("[AssetServer] 🔄 Direct image replacement request:\n")
+	fmt.Printf("  Old path: %s\n", req.Payload.OldPath)
+	fmt.Printf("  New path: %s\n", req.Payload.NewPath)
+	fmt.Printf("  Selector: %s\n", req.Payload.Selector)
+
+	// Send acknowledgment
+	conn.WriteJSON(map[string]interface{}{
+		"status": "received",
+	})
+
+	// Do direct string replacement in source files (no AI needed!)
+	oldPath := req.Payload.OldPath
+	newPath := req.Payload.NewPath
+
+	// Extract original path from Next.js optimized URL if needed
+	originalPath := extractOriginalImagePath(oldPath)
+	if originalPath != oldPath {
+		fmt.Printf("[AssetServer] 📦 Detected Next.js URL, extracted original: %s\n", originalPath)
+		oldPath = originalPath
+	}
+
+	fmt.Printf("[AssetServer] 🔍 Searching for files containing: %s\n", oldPath)
+
+	// Search all source files in the project
+	replaced, err := s.replaceImagePathInFiles(oldPath, newPath)
+
+	// Send response
+	conn.SetWriteDeadline(time.Now().Add(2 * time.Minute))
+	if err != nil {
+		fmt.Printf("[AssetServer] ❌ Image replacement failed: %v\n", err)
+		conn.WriteJSON(map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+	} else if !replaced {
+		fmt.Printf("[AssetServer] ⚠️ Image path not found in any file\n")
+		conn.WriteJSON(map[string]interface{}{
+			"status": "error",
+			"error":  "Image path not found in source files",
+		})
+	} else {
+		fmt.Printf("[AssetServer] ✅ Image path replaced successfully\n")
+		conn.WriteJSON(map[string]interface{}{
+			"status": "complete",
+		})
+	}
+}
+
+// replaceImagePathInFiles searches and replaces image path in all source files
+func (s *Server) replaceImagePathInFiles(oldPath, newPath string) (bool, error) {
+	extensions := []string{".tsx", ".ts", ".jsx", ".js", ".vue", ".svelte"}
+	replaced := false
+
+	err := filepath.Walk(s.projectDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			if info.Name() == "node_modules" || info.Name() == ".git" || info.Name() == "dist" || info.Name() == "build" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		validExt := false
+		for _, ext := range extensions {
+			if strings.HasSuffix(path, ext) {
+				validExt = true
+				break
+			}
+		}
+		if !validExt {
+			return nil
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		contentStr := string(content)
+		if !strings.Contains(contentStr, oldPath) {
+			return nil
+		}
+
+		fmt.Printf("[AssetServer] 📝 Found in: %s\n", path)
+		newContent := strings.ReplaceAll(contentStr, oldPath, newPath)
+
+		err = os.WriteFile(path, []byte(newContent), info.Mode())
+		if err != nil {
+			return fmt.Errorf("failed to write file %s: %w", path, err)
+		}
+
+		fmt.Printf("[AssetServer] ✅ Replaced in: %s\n", path)
+		replaced = true
+		return nil
+	})
+
+	return replaced, err
+}
+
+// extractOriginalImagePath extracts the original image path from Next.js optimized URLs
+// E.g., "/_next/image?url=%2Favatar.webp&w=3840&q=75" -> "/avatar.webp"
+func extractOriginalImagePath(path string) string {
+	// Check if this is a Next.js image URL
+	if !strings.Contains(path, "/_next/image") {
+		return path
+	}
+
+	// Parse URL to extract query parameters
+	if strings.Contains(path, "url=") {
+		// Find url= parameter
+		parts := strings.Split(path, "url=")
+		if len(parts) < 2 {
+			return path
+		}
+
+		// Get the URL-encoded path
+		encodedPath := parts[1]
+
+		// Remove any other query parameters after it
+		if ampIndex := strings.Index(encodedPath, "&"); ampIndex != -1 {
+			encodedPath = encodedPath[:ampIndex]
+		}
+
+		// Decode URL encoding
+		decodedPath := strings.ReplaceAll(encodedPath, "%2F", "/")
+		decodedPath = strings.ReplaceAll(decodedPath, "%2f", "/")
+		decodedPath = strings.ReplaceAll(decodedPath, "%20", " ")
+
+		fmt.Printf("[AssetServer] Extracted path from Next.js URL: %s -> %s\n", path, decodedPath)
+		return decodedPath
+	}
+
+	return path
 }

@@ -127,8 +127,18 @@ func (s *Server) Start() error {
 	// WebSocket endpoint for messaging
 	mux.HandleFunc("/__layrr/ws/message", s.handleMessageWebSocket)
 
+	// HTTP endpoint for immediate image upload
+	mux.HandleFunc("/__layrr/upload-image", s.handleImageUpload)
+
+	// HTTP endpoint for listing images in public directory
+	mux.HandleFunc("/__layrr/list-images", s.handleListImages)
+
 	// Proxy all other requests
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Log all requests for debugging
+		if s.verbose {
+			fmt.Printf("[Proxy] Request: %s %s\n", r.Method, r.URL.Path)
+		}
 		proxy.ServeHTTP(w, r)
 	})
 
@@ -225,6 +235,125 @@ func (s *Server) handleCursorAsset(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/svg+xml")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	w.Write(cursorAsset)
+}
+
+// handleImageUpload handles immediate image upload when user selects a file
+func (s *Server) handleImageUpload(w http.ResponseWriter, r *http.Request) {
+	// Set CORS headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	// Handle preflight OPTIONS request
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Only accept POST requests
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse the JSON body
+	var requestData struct {
+		Image     string `json:"image"`
+		ImageType string `json:"imageType"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to parse request: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if s.verbose {
+		fmt.Printf("[Proxy] 📤 Image upload request received (type: %s, size: %d bytes)\n",
+			requestData.ImageType, len(requestData.Image))
+	}
+
+	// Validate image type
+	if !ValidateImageType(requestData.ImageType) {
+		http.Error(w, fmt.Sprintf("Unsupported image type: %s", requestData.ImageType), http.StatusBadRequest)
+		return
+	}
+
+	// Check if project is Next.js (for now, only Next.js is supported)
+	ctx, err := analyzer.AnalyzeProject(s.projectDir)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to analyze project: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if ctx.Framework != "nextjs" {
+		http.Error(w, "Image attachment is currently only supported for Next.js projects", http.StatusBadRequest)
+		return
+	}
+
+	// Save the image immediately
+	imagePath, err := SaveImageToProject(requestData.Image, requestData.ImageType, s.projectDir)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to save image: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if s.verbose {
+		fmt.Printf("[Proxy] ✅ Image saved successfully: %s\n", imagePath)
+	}
+
+	// Return the path as JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"path": imagePath,
+	})
+}
+
+// handleListImages lists all images in the public directory
+func (s *Server) handleListImages(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("[Proxy] 🔵 handleListImages called - Method: %s, Path: %s\n", r.Method, r.URL.Path)
+
+	// Set CORS headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	// Handle preflight OPTIONS request
+	if r.Method == http.MethodOptions {
+		fmt.Printf("[Proxy] Handling OPTIONS preflight request\n")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Only accept GET requests
+	if r.Method != http.MethodGet {
+		fmt.Printf("[Proxy] ❌ Method not allowed: %s\n", r.Method)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	fmt.Printf("[Proxy] 📋 Listing images in public directory\n")
+	fmt.Printf("[Proxy] Project directory: %s\n", s.projectDir)
+	fmt.Printf("[Proxy] Looking for images in: %s/public\n", s.projectDir)
+
+	// List all images
+	images, err := ListImagesInPublic(s.projectDir)
+	if err != nil {
+		fmt.Printf("[Proxy] ❌ Error listing images: %v\n", err)
+		http.Error(w, fmt.Sprintf("Failed to list images: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Printf("[Proxy] ✅ Found %d images\n", len(images))
+	if len(images) > 0 {
+		fmt.Printf("[Proxy] Image paths:\n")
+		for _, img := range images {
+			fmt.Printf("  - %s (%s, %d bytes)\n", img.Path, img.Name, img.Size)
+		}
+	}
+
+	// Return as JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(images)
 }
 
 // handleAnalyzeDesign handles design analysis and passes context to Claude Code
@@ -836,6 +965,114 @@ func min(a, b int) int {
 	return b
 }
 
+// handleImageAttachment handles image attachment requests - image is already saved, just send to Claude
+func (s *Server) handleImageAttachment(conn *websocket.Conn, data map[string]interface{}) error {
+	if s.verbose {
+		fmt.Println("[Proxy] Handling attach-image request")
+	}
+
+	// Extract fields - imagePath is already provided (image was saved immediately on selection)
+	imagePath, ok := data["imagePath"].(string)
+	if !ok || imagePath == "" {
+		return fmt.Errorf("missing or invalid image path")
+	}
+
+	userPrompt, ok := data["prompt"].(string)
+	if !ok || userPrompt == "" {
+		return fmt.Errorf("missing or invalid prompt")
+	}
+
+	fmt.Printf("[Proxy] 📎 === IMAGE ATTACHMENT REQUEST ===\n")
+	fmt.Printf("[Proxy] Image path: %s\n", imagePath)
+	fmt.Printf("[Proxy] User prompt: %s\n", userPrompt)
+
+	// Send acknowledgment
+	conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	conn.WriteJSON(map[string]interface{}{
+		"id":     data["id"],
+		"status": "received",
+	})
+
+	// Check if area/element information is provided
+	var areaInfo bridge.AreaInfo
+
+	if areaData, ok := data["area"].(map[string]interface{}); ok {
+		fmt.Printf("[Proxy] 📍 Element context provided\n")
+
+		// Parse area info
+		areaInfo = bridge.AreaInfo{
+			X:            int(areaData["x"].(float64)),
+			Y:            int(areaData["y"].(float64)),
+			Width:        int(areaData["width"].(float64)),
+			Height:       int(areaData["height"].(float64)),
+			ElementCount: int(areaData["elementCount"].(float64)),
+		}
+
+		// Parse elements if available
+		if elementsData, ok := areaData["elements"].([]interface{}); ok && len(elementsData) > 0 {
+			for _, elem := range elementsData {
+				if elemMap, ok := elem.(map[string]interface{}); ok {
+					elemInfo := bridge.ElementInfo{
+						TagName:   getString(elemMap, "tagName"),
+						ID:        getString(elemMap, "id"),
+						Classes:   getString(elemMap, "classes"),
+						Selector:  getString(elemMap, "selector"),
+						InnerText: getString(elemMap, "innerText"),
+						OuterHTML: getString(elemMap, "outerHTML"),
+					}
+					areaInfo.Elements = append(areaInfo.Elements, elemInfo)
+
+					fmt.Printf("[Proxy] 📌 Selected element: %s (%s)\n", elemInfo.TagName, elemInfo.Selector)
+				}
+			}
+		}
+	}
+
+	// Format instruction simply - let the bridge.formatMessage handle element context
+	// Just append the image path info to the user's prompt
+	instruction := fmt.Sprintf("%s. Image saved at: %s (use Next.js Image component with this path)",
+		userPrompt, imagePath)
+
+	// Create bridge message - the bridge will format element context just like regular prompts
+	msg := bridge.Message{
+		ID:          int(time.Now().UnixNano() / 1000000),
+		Area:        areaInfo,
+		Instruction: instruction,
+		Screenshot:  "",
+	}
+
+	if s.verbose {
+		fmt.Printf("[Proxy] 📨 Sending to Claude Code with image path: %s\n", imagePath)
+	}
+
+	// Send to Claude Code through the bridge
+	// This blocks until Claude Code completes
+	fmt.Printf("[Proxy] ⏳ Processing image attachment request...\n")
+	err := s.bridge.HandleMessage(msg)
+
+	// Send completion status
+	if err != nil {
+		fmt.Printf("[Proxy] ❌ Error processing image attachment: %v\n", err)
+		conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+		conn.WriteJSON(map[string]interface{}{
+			"id":       data["id"],
+			"status":   "error",
+			"error":    err.Error(),
+			"saved Path": imagePath, // Still return the path even if Claude fails
+		})
+	} else {
+		fmt.Printf("[Proxy] 🎉 Image attachment complete\n")
+		conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+		conn.WriteJSON(map[string]interface{}{
+			"id":        data["id"],
+			"status":    "complete",
+			"imagePath": imagePath,
+		})
+	}
+
+	return nil
+}
+
 // handleReloadWebSocket handles WebSocket connections for live reload
 func (s *Server) handleReloadWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -945,6 +1182,20 @@ func (s *Server) handleMessageWebSocket(w http.ResponseWriter, r *http.Request) 
 					conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 					conn.WriteJSON(map[string]interface{}{
 						"type":   "ai-preview-result",
+						"status": "error",
+						"error":  err.Error(),
+					})
+				}
+				continue
+
+			case "attach-image":
+				// Handle image attachment - copy image to project and reference it in code
+				if err := s.handleImageAttachment(conn, data); err != nil {
+					if s.verbose {
+						fmt.Printf("[Proxy] ❌ Image attachment error: %v\n", err)
+					}
+					conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+					conn.WriteJSON(map[string]interface{}{
 						"status": "error",
 						"error":  err.Error(),
 					})

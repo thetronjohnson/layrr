@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { StartProxy, StopProxy, GetProxyURL, GetStatus, GetProjectInfo, SelectProjectDirectory, SetAPIKey, GetRecentProjects, OpenRecentProject, DetectRunningPorts, DetectPortsWithInfo, StopClaudeProcessing } from "../wailsjs/go/main/App";
 import ChatInput from './components/ChatInput';
+import ImageGallery from './components/ImageGallery';
 import WelcomeScreen from './components/WelcomeScreen';
 import GitCheckpointModal from './components/GitCheckpointModal';
 import GitHistoryModal from './components/GitHistoryModal';
@@ -87,6 +88,10 @@ function App() {
     // This connection status is for display purposes only - not used for actual communication
     const [isConnected, setIsConnected] = useState(false);
 
+    // Image gallery panel state (integrated into sidebar)
+    const [showImageGalleryPanel, setShowImageGalleryPanel] = useState(false);
+    const [selectedImagePathForPrompt, setSelectedImagePathForPrompt] = useState<string | null>(null);
+
     // Load initial status
     useEffect(() => {
         loadStatus();
@@ -116,6 +121,12 @@ function App() {
                     console.log('[Sidebar] Element selected:', payload);
                     setSelectedElement(payload);
                     setIsSelectionMode(false);
+
+                    // Auto-open gallery if an IMG element is selected
+                    if (payload.tagName === 'IMG') {
+                        console.log('[Sidebar] IMG element detected, opening gallery in replacement mode');
+                        setShowImageGalleryPanel(true);
+                    }
                     break;
                 case 'COLOR_PICKED':
                     console.log('[Sidebar] Color picked:', payload);
@@ -249,9 +260,80 @@ function App() {
         }, 1000);
     };
 
-    const handleSubmitPrompt = async (prompt: string, image?: string | null) => {
-        // If image is provided, use vision analysis flow
+    const handleSubmitPrompt = async (prompt: string, image?: string | null, isAttachment?: boolean, imagePath?: string | null) => {
+        // If image is provided, determine if it's an attachment or design analysis
         if (image) {
+            if (isAttachment) {
+                console.log('[Sidebar] 📎 === STARTING IMAGE ATTACHMENT ===');
+                console.log('[Sidebar] Prompt:', prompt);
+                console.log('[Sidebar] Image path:', imagePath);
+                console.log('[Sidebar] Selected element:', selectedElement);
+                console.log('[Sidebar] WebSocket connected?:', isConnected);
+
+                // Add to message history (keep max 9)
+                setMessageHistory(prev => {
+                    const updated = [{
+                        message: prompt,
+                        timestamp: new Date(),
+                        element: selectedElement ? selectedElement.tagName : 'Attachment'
+                    }, ...prev];
+                    return updated.slice(0, 9);
+                });
+
+                setIsProcessing(true);
+
+                // Format message for image attachment - include selected element if available
+                // Image is already saved, just send the path
+                const message: any = {
+                    type: 'attach-image',
+                    id: Date.now(),
+                    imagePath: imagePath, // Send path instead of base64
+                    prompt: prompt
+                };
+
+                // Include selected element information if available
+                if (selectedElement) {
+                    message.area = {
+                        x: Math.round(selectedElement.bounds.x),
+                        y: Math.round(selectedElement.bounds.y),
+                        width: Math.round(selectedElement.bounds.width),
+                        height: Math.round(selectedElement.bounds.height),
+                        elementCount: 1,
+                        elements: [{
+                            tagName: selectedElement.tagName,
+                            id: selectedElement.id,
+                            classes: selectedElement.classes.join(' '),
+                            selector: selectedElement.selector,
+                            innerText: selectedElement.innerText || '',
+                            outerHTML: selectedElement.outerHTML || ''
+                        }]
+                    };
+                }
+
+                console.log('[Sidebar] 📦 Formatted message for image attachment:', {
+                    ...message,
+                    hasElement: !!selectedElement
+                });
+
+                // Send via iframe postMessage (iframe will handle WebSocket)
+                if (iframeRef.current?.contentWindow) {
+                    iframeRef.current.contentWindow.postMessage(
+                        { type: 'SEND_ATTACHMENT_MESSAGE', payload: message },
+                        '*'
+                    );
+                    console.log('[Sidebar] ✅ Attachment message sent to iframe');
+                } else {
+                    console.error('[Sidebar] ❌ Iframe not available');
+                    setIsProcessing(false);
+                }
+
+                // Clear selected element after sending
+                setSelectedElement(null);
+
+                return;
+            }
+
+            // Original design analysis flow
             console.log('[Sidebar] 🖼️ === STARTING IMAGE ANALYSIS ===');
             console.log('[Sidebar] Prompt:', prompt);
             console.log('[Sidebar] Image provided:', !!image);
@@ -323,6 +405,52 @@ function App() {
 
         setIsProcessing(true);
 
+        // Check if there's a selected image from gallery - if so, use image attachment flow
+        if (selectedImagePathForPrompt) {
+            console.log('[Sidebar] 🖼️ Using selected image from gallery:', selectedImagePathForPrompt);
+
+            // Format as image attachment message
+            const message: any = {
+                type: 'attach-image',
+                id: Date.now(),
+                imagePath: selectedImagePathForPrompt,
+                prompt: prompt,
+                area: {
+                    x: Math.round(selectedElement.bounds.x),
+                    y: Math.round(selectedElement.bounds.y),
+                    width: Math.round(selectedElement.bounds.width),
+                    height: Math.round(selectedElement.bounds.height),
+                    elementCount: 1,
+                    elements: [{
+                        tagName: selectedElement.tagName,
+                        id: selectedElement.id,
+                        classes: selectedElement.classes.join(' '),
+                        selector: selectedElement.selector,
+                        innerText: selectedElement.innerText || '',
+                        outerHTML: selectedElement.outerHTML || ''
+                    }]
+                }
+            };
+
+            // Send via iframe postMessage
+            if (iframeRef.current?.contentWindow) {
+                iframeRef.current.contentWindow.postMessage(
+                    { type: 'SEND_ATTACHMENT_MESSAGE', payload: message },
+                    '*'
+                );
+                console.log('[Sidebar] ✅ Image attachment message sent with gallery image');
+            } else {
+                console.error('[Sidebar] ❌ Iframe not available');
+                setIsProcessing(false);
+            }
+
+            // Clear selected image after sending
+            setSelectedImagePathForPrompt(null);
+            setSelectedElement(null);
+            return;
+        }
+
+        // Regular message flow (no image)
         // Format message according to bridge.Message structure
         const message = {
             id: Date.now(),
@@ -735,6 +863,73 @@ function App() {
                                         )}
                                     </div>
                                 </motion.div>
+                            ) : showImageGalleryPanel ? (
+                                /* Image Gallery Panel View */
+                                <motion.div
+                                    key="images"
+                                    initial={{ x: 20, opacity: 0 }}
+                                    animate={{ x: 0, opacity: 1 }}
+                                    exit={{ x: 20, opacity: 0 }}
+                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                    className="flex-1 overflow-hidden flex flex-col"
+                                >
+                                    <ImageGallery
+                                        onBack={() => setShowImageGalleryPanel(false)}
+                                        onSelectImage={(path) => {
+                                            setSelectedImagePathForPrompt(path);
+                                            setShowImageGalleryPanel(false);
+                                            setToastMessage(`Image selected: ${path.split('/').pop()}`);
+                                        }}
+                                        selectedImagePath={selectedImagePathForPrompt}
+                                        isReplacementMode={selectedElement?.tagName === 'IMG'}
+                                        currentImagePath={
+                                            selectedElement?.tagName === 'IMG'
+                                                ? (() => {
+                                                    // Extract src from outerHTML
+                                                    const srcMatch = selectedElement.outerHTML?.match(/src=["']([^"']+)["']/);
+                                                    return srcMatch ? srcMatch[1] : null;
+                                                })()
+                                                : null
+                                        }
+                                        onReplaceImage={(newPath) => {
+                                            if (!selectedElement) return;
+
+                                            // Extract current image path
+                                            const srcMatch = selectedElement.outerHTML?.match(/src=["']([^"']+)["']/);
+                                            const currentPath = srcMatch ? srcMatch[1] : null;
+
+                                            if (!currentPath) {
+                                                setToastMessage('Could not find current image path');
+                                                return;
+                                            }
+
+                                            console.log('[Sidebar] Direct image replacement:', currentPath, '→', newPath);
+
+                                            // Send direct image replacement message
+                                            if (iframeRef.current?.contentWindow) {
+                                                iframeRef.current.contentWindow.postMessage(
+                                                    {
+                                                        type: 'DIRECT_IMAGE_REPLACE',
+                                                        payload: {
+                                                            oldPath: currentPath,
+                                                            newPath: newPath,
+                                                            selector: selectedElement.selector,
+                                                            elementInfo: {
+                                                                tagName: selectedElement.tagName,
+                                                                outerHTML: selectedElement.outerHTML
+                                                            }
+                                                        }
+                                                    },
+                                                    '*'
+                                                );
+                                            }
+
+                                            setShowImageGalleryPanel(false);
+                                            setToastMessage(`Replacing image...`);
+                                            setSelectedElement(null);
+                                        }}
+                                    />
+                                </motion.div>
                             ) : showCheckpointsPanel ? (
                                 /* Checkpoints Panel View */
                                 <motion.div
@@ -957,9 +1152,12 @@ function App() {
                                 isSelectionMode={isSelectionMode}
                                 isColorPickerMode={isColorPickerMode}
                                 showCheckpoints={showCheckpointsPanel}
+                                selectedImagePath={selectedImagePathForPrompt}
                                 onSelectElement={handleSelectElement}
                                 onClearSelection={handleClearSelection}
                                 onColorPicker={handleColorPicker}
+                                onOpenImageGallery={() => setShowImageGalleryPanel(true)}
+                                onClearGalleryImage={() => setSelectedImagePathForPrompt(null)}
                                 onSubmitPrompt={handleSubmitPrompt}
                                 onCheckpointSaved={() => {
                                     setToastMessage('Checkpoint saved successfully');

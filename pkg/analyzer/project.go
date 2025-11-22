@@ -10,9 +10,10 @@ import (
 
 // ProjectContext contains information about the project's framework and styling approach
 type ProjectContext struct {
-	Framework  string // "react", "vue", "svelte", "html"
-	Styling    string // "tailwind", "css-modules", "styled-components", "emotion", "css"
-	TypeScript bool
+	Framework    string // "react", "vue", "svelte", "html", "nextjs"
+	Styling      string // "tailwind", "css-modules", "styled-components", "emotion", "css"
+	TypeScript   bool
+	NextJSRouter string // "app", "pages", "none" - only set if Framework is "nextjs"
 }
 
 // AnalyzeProject detects the project's framework and styling approach
@@ -50,8 +51,11 @@ func AnalyzeProject(projectDir string) (*ProjectContext, error) {
 		allDeps[k] = true
 	}
 
-	// Detect framework
-	if allDeps["react"] || allDeps["react-dom"] {
+	// Detect framework (check Next.js first since it includes React)
+	if allDeps["next"] {
+		ctx.Framework = "nextjs"
+		ctx.NextJSRouter = detectNextJSRouter(projectDir)
+	} else if allDeps["react"] || allDeps["react-dom"] {
 		ctx.Framework = "react"
 	} else if allDeps["vue"] {
 		ctx.Framework = "vue"
@@ -78,6 +82,49 @@ func AnalyzeProject(projectDir string) (*ProjectContext, error) {
 		hasFileWithSuffix(projectDir, ".ts")
 
 	return ctx, nil
+}
+
+// detectNextJSRouter detects whether Next.js project uses App Router or Pages Router
+func detectNextJSRouter(projectDir string) string {
+	// Check for App Router (Next.js 13+)
+	appDir := filepath.Join(projectDir, "app")
+	if stat, err := os.Stat(appDir); err == nil && stat.IsDir() {
+		// Look for page.tsx or page.jsx in app directory
+		if hasFile(appDir, "page.tsx") || hasFile(appDir, "page.jsx") ||
+			hasFile(appDir, "page.ts") || hasFile(appDir, "page.js") {
+			return "app"
+		}
+	}
+
+	// Check for Pages Router (traditional)
+	pagesDir := filepath.Join(projectDir, "pages")
+	if stat, err := os.Stat(pagesDir); err == nil && stat.IsDir() {
+		return "pages"
+	}
+
+	// Check for src/app or src/pages
+	srcAppDir := filepath.Join(projectDir, "src", "app")
+	if stat, err := os.Stat(srcAppDir); err == nil && stat.IsDir() {
+		if hasFile(srcAppDir, "page.tsx") || hasFile(srcAppDir, "page.jsx") {
+			return "app"
+		}
+	}
+
+	srcPagesDir := filepath.Join(projectDir, "src", "pages")
+	if stat, err := os.Stat(srcPagesDir); err == nil && stat.IsDir() {
+		return "pages"
+	}
+
+	return "none"
+}
+
+// hasFile checks if a specific file exists in a directory
+func hasFile(dir, filename string) bool {
+	path := filepath.Join(dir, filename)
+	if _, err := os.Stat(path); err == nil {
+		return true
+	}
+	return false
 }
 
 // hasFileWithSuffix checks if the project has any file with the given suffix
@@ -114,7 +161,7 @@ func hasFileWithSuffix(projectDir, suffix string) bool {
 // GetFileExtension returns the appropriate file extension for the project
 func (ctx *ProjectContext) GetFileExtension() string {
 	switch ctx.Framework {
-	case "react":
+	case "nextjs", "react":
 		if ctx.TypeScript {
 			return ".tsx"
 		}
@@ -139,5 +186,11 @@ func (ctx *ProjectContext) String() string {
 	if ctx.TypeScript {
 		lang = "TypeScript"
 	}
-	return fmt.Sprintf("%s + %s (%s)", ctx.Framework, ctx.Styling, lang)
+
+	framework := ctx.Framework
+	if ctx.Framework == "nextjs" && ctx.NextJSRouter != "none" {
+		framework = fmt.Sprintf("Next.js (%s router)", ctx.NextJSRouter)
+	}
+
+	return fmt.Sprintf("%s + %s (%s)", framework, ctx.Styling, lang)
 }

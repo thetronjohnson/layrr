@@ -6,6 +6,84 @@ interface ElementInfo {
   bounds: DOMRect;
   innerText?: string;
   outerHTML?: string;
+  componentSource?: ComponentSource | null;
+}
+
+interface ComponentSource {
+  fileName: string;
+  lineNumber: number;
+  columnNumber: number;
+  componentName: string;
+  method: 'fiber' | 'static';
+}
+
+/**
+ * Helper: Find React Fiber from DOM element
+ */
+function getReactFiberFromElement(element: any): any {
+  const fiberKey = Object.keys(element).find(key =>
+    key.startsWith('__reactFiber$') ||
+    key.startsWith('__reactInternalInstance$')
+  );
+  return fiberKey ? element[fiberKey] : null;
+}
+
+/**
+ * Helper: Get component display name from Fiber node
+ */
+function getComponentDisplayName(fiber: any): string {
+  const type = fiber.type;
+  if (!type) return 'Unknown';
+  if (typeof type === 'string') return type;
+  if (type.displayName) return type.displayName;
+  if (type.name) return type.name;
+  return 'Anonymous';
+}
+
+/**
+ * Find component source from React Fiber tree (works in React 18)
+ */
+function findComponentSourceFromFiber(element: HTMLElement): ComponentSource | null {
+  try {
+    const fiber = getReactFiberFromElement(element);
+    if (!fiber) {
+      console.log('[Layrr] No React Fiber found on element');
+      return null;
+    }
+
+    let current = fiber;
+    let depth = 0;
+    const maxDepth = 50;
+
+    while (current && depth < maxDepth) {
+      if (current._debugSource) {
+        const { fileName, lineNumber, columnNumber } = current._debugSource;
+        const componentName = getComponentDisplayName(current);
+
+        console.log('[Layrr] Found component source via Fiber:', {
+          fileName,
+          lineNumber,
+          componentName
+        });
+
+        return {
+          fileName,
+          lineNumber: lineNumber || 0,
+          columnNumber: columnNumber || 0,
+          componentName,
+          method: 'fiber'
+        };
+      }
+      current = current.return;
+      depth++;
+    }
+
+    console.log('[Layrr] No _debugSource found in Fiber tree (React 19?)');
+    return null;
+  } catch (error) {
+    console.error('[Layrr] Error walking Fiber tree:', error);
+    return null;
+  }
 }
 
 /**
@@ -136,8 +214,14 @@ class MinimalLayrr {
         break;
       case 'SEND_ELEMENT_MESSAGE':
       case 'SEND_VISION_MESSAGE':
+      case 'SEND_ATTACHMENT_MESSAGE':
+      case 'DIRECT_IMAGE_REPLACE':
         // Forward message to WebSocket backend
-        this.sendToWebSocket(payload);
+        // Need to include the type field for backend routing
+        this.sendToWebSocket({
+          type: type.toLowerCase().replace(/_/g, '-'),
+          payload: payload
+        });
         break;
     }
   }
@@ -323,6 +407,9 @@ class MinimalLayrr {
       }
     }
 
+    // Try to find component source
+    const componentSource = findComponentSourceFromFiber(element);
+
     return {
       tagName,
       classes,
@@ -330,7 +417,8 @@ class MinimalLayrr {
       selector,
       bounds: bounds.toJSON(),
       innerText: element.innerText,
-      outerHTML: element.outerHTML
+      outerHTML: element.outerHTML,
+      componentSource
     };
   }
 
