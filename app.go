@@ -301,6 +301,9 @@ func (a *App) CreateNextProject(parentDir string, projectName string) (string, e
 		log.Printf("Warning: Failed to add to recent projects: %v", err)
 	}
 
+	// Auto-start dev server for the new project
+	go a.autoStartDevServer(projectPath)
+
 	return projectPath, nil
 }
 
