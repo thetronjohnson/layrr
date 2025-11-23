@@ -25,6 +25,8 @@ interface WelcomeScreenProps {
   onTargetPortChange: (port: string) => void;
   detectedPorts: PortInfo[];
   onRefreshPorts?: () => Promise<void>;
+  devServerStarting?: boolean;
+  devServerPort?: number;
 }
 
 export default function WelcomeScreen({
@@ -36,7 +38,9 @@ export default function WelcomeScreen({
   targetPortInput,
   onTargetPortChange,
   detectedPorts,
-  onRefreshPorts
+  onRefreshPorts,
+  devServerStarting = false,
+  devServerPort = 0
 }: WelcomeScreenProps) {
   const [isRefreshing, setIsRefreshing] = React.useState(false);
 
@@ -102,11 +106,36 @@ export default function WelcomeScreen({
               <div>
                 <label className="block text-gray-700 text-xs mb-1.5">
                   Source Port{' '}
-                  {detectedPorts.length === 0 && <span className="text-gray-500">(optional)</span>}
+                  {detectedPorts.length === 0 && !devServerStarting && <span className="text-gray-500">(optional)</span>}
                 </label>
 
-                {/* Show detected ports - horizontal list with button on right */}
-                {detectedPorts.length > 0 ? (
+                {/* Show dev server starting status */}
+                {devServerStarting ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <ArrowClockwise size={16} className="animate-spin text-purple-600" />
+                      <span className="text-gray-700 text-sm">Starting dev server...</span>
+                    </div>
+                  </div>
+                ) : devServerPort > 0 ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-gray-900 text-sm font-mono">
+                        :{devServerPort}
+                      </span>
+                      <span
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onStartProxy(devServerPort.toString());
+                        }}
+                        className="text-gray-900 text-sm cursor-pointer hover:opacity-70 transition-opacity"
+                      >
+                        Open
+                      </span>
+                    </div>
+                  </div>
+                ) : detectedPorts.length > 0 ? (
                   <div className="space-y-2">
                     {detectedPorts.map((portInfo) => (
                       <div key={portInfo.port} className="flex items-center justify-between gap-3">

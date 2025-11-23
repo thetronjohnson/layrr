@@ -35,6 +35,7 @@ func AnalyzeProject(projectDir string) (*ProjectContext, error) {
 	var pkg struct {
 		Dependencies    map[string]string `json:"dependencies"`
 		DevDependencies map[string]string `json:"devDependencies"`
+		Scripts         map[string]string `json:"scripts"`
 	}
 
 	if err := json.Unmarshal(data, &pkg); err != nil {

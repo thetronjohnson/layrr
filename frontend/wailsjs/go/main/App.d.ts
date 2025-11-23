@@ -14,6 +14,8 @@ export function DetectRunningPorts():Promise<Array<number>>;
 
 export function GetCurrentGitCommit():Promise<string>;
 
+export function GetDevServerStatus():Promise<Record<string, any>>;
+
 export function GetGitCommitHistory(arg1:number):Promise<Array<git.Commit>>;
 
 export function GetProjectInfo():Promise<Record<string, any>>;

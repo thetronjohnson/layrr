@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { StartProxy, StopProxy, GetProxyURL, GetStatus, GetProjectInfo, SelectProjectDirectory, SetAPIKey, GetRecentProjects, OpenRecentProject, DetectRunningPorts, DetectPortsWithInfo, StopClaudeProcessing } from "../wailsjs/go/main/App";
+import { StartProxy, StopProxy, GetProxyURL, GetStatus, GetProjectInfo, SelectProjectDirectory, SetAPIKey, GetRecentProjects, OpenRecentProject, DetectRunningPorts, DetectPortsWithInfo, StopClaudeProcessing, GetDevServerStatus } from "../wailsjs/go/main/App";
 import ChatInput from './components/ChatInput';
 import ImageGallery from './components/ImageGallery';
 import WelcomeScreen from './components/WelcomeScreen';
@@ -82,6 +82,8 @@ function App() {
     const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
     const [selectedProjectForWelcome, setSelectedProjectForWelcome] = useState<{ path: string; name: string } | null>(null);
     const [detectedPorts, setDetectedPorts] = useState<PortInfo[]>([]);
+    const [devServerStarting, setDevServerStarting] = useState(false);
+    const [devServerPort, setDevServerPort] = useState(0);
 
     // IMPORTANT: Wails app should NOT connect to WebSocket
     // Only the injected code in the user's browser (inside iframe) connects to WebSocket
@@ -98,6 +100,33 @@ function App() {
         loadProjectInfo();
         loadRecentProjects();
     }, []);
+
+    // Poll dev server status when a project is selected
+    useEffect(() => {
+        if (!selectedProjectForWelcome) return;
+
+        const pollDevServerStatus = async () => {
+            try {
+                const status = await GetDevServerStatus();
+                const statusData = status as { starting: boolean; port: number };
+                setDevServerStarting(statusData.starting);
+                setDevServerPort(statusData.port);
+
+                // If dev server is ready, auto-populate the port input
+                if (!statusData.starting && statusData.port > 0) {
+                    setTargetPortInput(statusData.port.toString());
+                }
+            } catch (error) {
+                console.error('Error polling dev server status:', error);
+            }
+        };
+
+        // Poll every 500ms
+        const interval = setInterval(pollDevServerStatus, 500);
+        pollDevServerStatus(); // Initial call
+
+        return () => clearInterval(interval);
+    }, [selectedProjectForWelcome]);
 
     // postMessage bridge for iframe communication
     useEffect(() => {
@@ -777,6 +806,8 @@ function App() {
                     onTargetPortChange={setTargetPortInput}
                     detectedPorts={detectedPorts}
                     onRefreshPorts={handleRefreshPorts}
+                    devServerStarting={devServerStarting}
+                    devServerPort={devServerPort}
                 />
             ) : (
                 <>

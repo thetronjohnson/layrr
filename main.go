@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"embed"
 
 	"github.com/wailsapp/wails/v2"
@@ -25,11 +24,8 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 17, G: 24, B: 39, A: 1}, // Darker, more professional
-		OnStartup:        app.startup,
-		OnShutdown: func(ctx context.Context) {
-			// Clean shutdown of proxy server
-			app.StopProxy()
-		},
+		OnStartup:  app.startup,
+		OnShutdown: app.shutdown,
 		Bind: []interface{}{
 			app,
 		},

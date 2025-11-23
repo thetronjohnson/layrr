@@ -22,6 +22,10 @@ export function GetCurrentGitCommit() {
   return window['go']['main']['App']['GetCurrentGitCommit']();
 }
 
+export function GetDevServerStatus() {
+  return window['go']['main']['App']['GetDevServerStatus']();
+}
+
 export function GetGitCommitHistory(arg1) {
   return window['go']['main']['App']['GetGitCommitHistory'](arg1);
 }

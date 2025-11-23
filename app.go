@@ -12,6 +12,7 @@ import (
 	"github.com/thetronjohnson/layrr/pkg/bridge"
 	"github.com/thetronjohnson/layrr/pkg/claude"
 	"github.com/thetronjohnson/layrr/pkg/config"
+	"github.com/thetronjohnson/layrr/pkg/devserver"
 	"github.com/thetronjohnson/layrr/pkg/git"
 	"github.com/thetronjohnson/layrr/pkg/proxy"
 	"github.com/thetronjohnson/layrr/pkg/status"
@@ -21,17 +22,19 @@ import (
 
 // App struct
 type App struct {
-	ctx            context.Context
-	assetServer    *assetserver.Server
-	watcher        *watcher.Watcher
-	bridge         *bridge.Bridge
-	claudeManager  *claude.Manager
-	statusDisplay  *status.Display
-	gitManager     *git.GitManager
-	projectDir     string
-	assetPort      int
-	targetPort     int
-	isServerActive bool
+	ctx               context.Context
+	assetServer       *assetserver.Server
+	watcher           *watcher.Watcher
+	bridge            *bridge.Bridge
+	claudeManager     *claude.Manager
+	statusDisplay     *status.Display
+	gitManager        *git.GitManager
+	devServerManager  *devserver.Manager
+	projectDir        string
+	assetPort         int
+	targetPort        int
+	isServerActive    bool
+	devServerStarting bool
 }
 
 // NewApp creates a new App application struct
@@ -82,12 +85,15 @@ func (a *App) StartProxy(projectPath string, targetPort int) string {
 		log.Printf("⚠️  No project path provided, using default: %s", a.projectDir)
 	}
 
-	// Use provided port or auto-detect
+	// Use provided port, stored port, or auto-detect
 	var err error
 	if targetPort > 0 {
 		a.targetPort = targetPort
+	} else if a.targetPort > 0 {
+		// Use port from auto-started dev server
+		log.Printf("Using auto-started dev server on port %d", a.targetPort)
 	} else {
-		// Auto-detect dev server port
+		// Fallback to auto-detect dev server port
 		detectedPort, err := proxy.DetectDevServer()
 		if err != nil {
 			return fmt.Sprintf("Error: Could not detect dev server. Please start your dev server first or specify a port. %v", err)
@@ -155,6 +161,14 @@ func (a *App) StopProxy() string {
 		a.watcher.Close()
 	}
 
+	// Stop dev server if running
+	if a.devServerManager != nil {
+		log.Println("Stopping dev server...")
+		if err := a.devServerManager.Stop(); err != nil {
+			log.Printf("Warning: Failed to stop dev server: %v", err)
+		}
+	}
+
 	a.isServerActive = false
 	return "Layrr stopped"
 }
@@ -200,6 +214,9 @@ func (a *App) SelectProjectDirectory() (string, error) {
 	// Reinitialize git manager for the new project directory
 	a.gitManager = git.NewGitManager(a.projectDir)
 
+	// Auto-start dev server
+	go a.autoStartDevServer(selectedDir)
+
 	// Add to recent projects
 	projectName := filepath.Base(selectedDir)
 	if err := config.AddRecentProject(selectedDir, projectName, a.targetPort); err != nil {
@@ -237,6 +254,9 @@ func (a *App) OpenRecentProject(path string, targetPort int) string {
 
 	// Reinitialize git manager for the new project directory
 	a.gitManager = git.NewGitManager(a.projectDir)
+
+	// Auto-start dev server
+	go a.autoStartDevServer(path)
 
 	// Update recent projects list
 	projectName := filepath.Base(path)
@@ -370,4 +390,67 @@ func (a *App) StopClaudeProcessing() error {
 	}
 
 	return a.claudeManager.Stop()
+}
+
+// autoStartDevServer automatically starts the development server for a project
+func (a *App) autoStartDevServer(projectDir string) {
+	log.Printf("🚀 Auto-starting dev server for: %s", projectDir)
+	a.devServerStarting = true
+	defer func() { a.devServerStarting = false }()
+
+	// Stop any existing dev server
+	if a.devServerManager != nil {
+		log.Println("Stopping existing dev server...")
+		if err := a.devServerManager.Stop(); err != nil {
+			log.Printf("Warning: Failed to stop existing dev server: %v", err)
+		}
+	}
+
+	// Create new dev server manager
+	a.devServerManager = devserver.NewManager(projectDir)
+
+	// Start the dev server
+	if err := a.devServerManager.Start(); err != nil {
+		log.Printf("❌ Failed to start dev server: %v", err)
+		return
+	}
+
+	log.Println("⏳ Waiting for dev server to be ready...")
+
+	// Wait for the server to start (30 second timeout)
+	port, err := a.devServerManager.WaitForPort(30 * time.Second)
+	if err != nil {
+		log.Printf("❌ Dev server failed to start: %v", err)
+		return
+	}
+
+	// Store the detected port
+	a.targetPort = port
+	log.Printf("✅ Dev server started successfully on port %d", port)
+}
+
+// GetDevServerStatus returns the current status of the dev server
+func (a *App) GetDevServerStatus() map[string]interface{} {
+	return map[string]interface{}{
+		"starting": a.devServerStarting,
+		"port":     a.targetPort,
+	}
+}
+
+// shutdown cleanup function
+func (a *App) shutdown(ctx context.Context) {
+	log.Println("Shutting down application...")
+
+	// Stop dev server if running
+	if a.devServerManager != nil {
+		log.Println("Stopping dev server...")
+		if err := a.devServerManager.Stop(); err != nil {
+			log.Printf("Warning: Failed to stop dev server: %v", err)
+		}
+	}
+
+	// Stop proxy if active
+	if a.isServerActive {
+		a.StopProxy()
+	}
 }
