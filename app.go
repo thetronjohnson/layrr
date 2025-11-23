@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -138,6 +139,10 @@ func (a *App) StartProxy(projectPath string, targetPort int) string {
 	time.Sleep(500 * time.Millisecond)
 	a.isServerActive = true
 
+	// Set window title to just the project name (without port)
+	projectName := filepath.Base(a.projectDir)
+	runtime.WindowSetTitle(a.ctx, projectName)
+
 	return fmt.Sprintf("Layrr started - Proxy on port %d, Dev server on port %d", a.assetPort, a.targetPort)
 }
 
@@ -170,6 +175,10 @@ func (a *App) StopProxy() string {
 	}
 
 	a.isServerActive = false
+
+	// Reset window title to default
+	runtime.WindowSetTitle(a.ctx, "Layrr - Visual Editor")
+
 	return "Layrr stopped"
 }
 
@@ -224,6 +233,75 @@ func (a *App) SelectProjectDirectory() (string, error) {
 	}
 
 	return selectedDir, nil
+}
+
+// SelectDirectoryForNewProject opens a directory picker for selecting parent location for new project
+func (a *App) SelectDirectoryForNewProject() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		homeDir = "/"
+	}
+
+	selectedDir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title:            "Select Location for New Project",
+		DefaultDirectory: homeDir,
+	})
+
+	if err != nil {
+		return "", fmt.Errorf("failed to open directory dialog: %w", err)
+	}
+
+	// User cancelled
+	if selectedDir == "" {
+		return "", nil
+	}
+
+	return selectedDir, nil
+}
+
+// CreateNextProject creates a new Next.js project using pnpm
+func (a *App) CreateNextProject(parentDir string, projectName string) (string, error) {
+	log.Printf("Creating Next.js project: %s in %s", projectName, parentDir)
+
+	// Validate project name
+	if projectName == "" {
+		return "", fmt.Errorf("project name cannot be empty")
+	}
+
+	// Check if directory already exists
+	projectPath := filepath.Join(parentDir, projectName)
+	if _, err := os.Stat(projectPath); err == nil {
+		return "", fmt.Errorf("a directory named '%s' already exists in this location", projectName)
+	}
+
+	// Check if pnpm is installed
+	if _, err := exec.LookPath("pnpm"); err != nil {
+		return "", fmt.Errorf("pnpm not found. Please install pnpm first: npm install -g pnpm")
+	}
+
+	// Emit progress event
+	runtime.EventsEmit(a.ctx, "project-creation-progress", "Creating Next.js project...")
+
+	// Create command: pnpm create next-app@latest {projectName} --yes
+	cmd := exec.Command("pnpm", "create", "next-app@latest", projectName, "--yes")
+	cmd.Dir = parentDir
+
+	// Capture output
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("Error creating project: %v\nOutput: %s", err, string(output))
+		return "", fmt.Errorf("failed to create project: %v", err)
+	}
+
+	log.Printf("Project created successfully: %s", projectPath)
+	runtime.EventsEmit(a.ctx, "project-creation-progress", "Project created successfully!")
+
+	// Add to recent projects
+	if err := config.AddRecentProject(projectPath, projectName, 0); err != nil {
+		log.Printf("Warning: Failed to add to recent projects: %v", err)
+	}
+
+	return projectPath, nil
 }
 
 // GetRecentProjects returns the list of recently opened projects

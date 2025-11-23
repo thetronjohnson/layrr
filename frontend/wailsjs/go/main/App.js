@@ -10,6 +10,10 @@ export function CreateGitCheckpoint(arg1) {
   return window['go']['main']['App']['CreateGitCheckpoint'](arg1);
 }
 
+export function CreateNextProject(arg1, arg2) {
+  return window['go']['main']['App']['CreateNextProject'](arg1, arg2);
+}
+
 export function DetectPortsWithInfo() {
   return window['go']['main']['App']['DetectPortsWithInfo']();
 }
@@ -56,6 +60,10 @@ export function OpenRecentProject(arg1, arg2) {
 
 export function RemoveRecentProject(arg1) {
   return window['go']['main']['App']['RemoveRecentProject'](arg1);
+}
+
+export function SelectDirectoryForNewProject() {
+  return window['go']['main']['App']['SelectDirectoryForNewProject']();
 }
 
 export function SelectProjectDirectory() {

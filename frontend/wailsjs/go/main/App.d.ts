@@ -8,6 +8,8 @@ export function AddRecentProject(arg1:string,arg2:string,arg3:number):Promise<vo
 
 export function CreateGitCheckpoint(arg1:string):Promise<void>;
 
+export function CreateNextProject(arg1:string,arg2:string):Promise<string>;
+
 export function DetectPortsWithInfo():Promise<Array<proxy.PortInfo>>;
 
 export function DetectRunningPorts():Promise<Array<number>>;
@@ -31,6 +33,8 @@ export function IsGitRepository():Promise<boolean>;
 export function OpenRecentProject(arg1:string,arg2:number):Promise<string>;
 
 export function RemoveRecentProject(arg1:string):Promise<void>;
+
+export function SelectDirectoryForNewProject():Promise<string>;
 
 export function SelectProjectDirectory():Promise<string>;
 

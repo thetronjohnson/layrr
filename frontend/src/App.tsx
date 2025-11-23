@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { StartProxy, StopProxy, GetProxyURL, GetStatus, GetProjectInfo, SelectProjectDirectory, SetAPIKey, GetRecentProjects, OpenRecentProject, DetectRunningPorts, DetectPortsWithInfo, StopClaudeProcessing, GetDevServerStatus } from "../wailsjs/go/main/App";
+import { StartProxy, StopProxy, GetProxyURL, GetStatus, GetProjectInfo, SelectProjectDirectory, SetAPIKey, GetRecentProjects, OpenRecentProject, DetectRunningPorts, DetectPortsWithInfo, StopClaudeProcessing, GetDevServerStatus, SelectDirectoryForNewProject, CreateNextProject } from "../wailsjs/go/main/App";
+import { EventsOn } from "../wailsjs/runtime/runtime";
 import ChatInput from './components/ChatInput';
 import ImageGallery from './components/ImageGallery';
 import WelcomeScreen from './components/WelcomeScreen';
@@ -94,11 +95,31 @@ function App() {
     const [showImageGalleryPanel, setShowImageGalleryPanel] = useState(false);
     const [selectedImagePathForPrompt, setSelectedImagePathForPrompt] = useState<string | null>(null);
 
+    // New project creation state
+    const [isCreatingProject, setIsCreatingProject] = useState(false);
+    const [projectCreationProgress, setProjectCreationProgress] = useState('');
+    const [showProjectNameInput, setShowProjectNameInput] = useState(false);
+    const [newProjectParentDir, setNewProjectParentDir] = useState('');
+    const [projectNameInput, setProjectNameInput] = useState('');
+    const [projectNameError, setProjectNameError] = useState('');
+
     // Load initial status
     useEffect(() => {
         loadStatus();
         loadProjectInfo();
         loadRecentProjects();
+    }, []);
+
+    // Listen for project creation progress events
+    useEffect(() => {
+        const unsubscribe = EventsOn('project-creation-progress', (message: string) => {
+            console.log('[Project Creation] Progress:', message);
+            setProjectCreationProgress(message);
+        });
+
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
     }, []);
 
     // Poll dev server status when a project is selected
@@ -766,6 +787,102 @@ function App() {
         setTargetPortInput('');
     };
 
+    const handleNewProject = async () => {
+        try {
+            // Step 1: Open directory picker for parent location
+            const parentDir = await SelectDirectoryForNewProject();
+
+            // User cancelled
+            if (!parentDir) {
+                return;
+            }
+
+            // Step 2: Store parent directory and show project name input
+            setNewProjectParentDir(parentDir);
+            setShowProjectNameInput(true);
+            setProjectNameInput('');
+            setProjectNameError('');
+        } catch (error) {
+            console.error('Error selecting directory:', error);
+            setToastMessage('Failed to select directory');
+        }
+    };
+
+    const validateProjectName = (name: string): string | null => {
+        if (name.length < 3) {
+            return 'Project name must be at least 3 characters';
+        }
+
+        // Check for invalid characters
+        if (!/^[a-zA-Z0-9-_]+$/.test(name)) {
+            return 'Project name can only contain letters, numbers, hyphens, and underscores';
+        }
+
+        return null;
+    };
+
+    const handleCreateProject = async () => {
+        // Validate project name
+        const normalizedName = projectNameInput.trim().replace(/\s+/g, '-').toLowerCase();
+        const error = validateProjectName(normalizedName);
+
+        if (error) {
+            setProjectNameError(error);
+            return;
+        }
+
+        try {
+            setIsCreatingProject(true);
+            setProjectCreationProgress('Initializing...');
+            setProjectNameError('');
+
+            // Call backend to create project
+            const projectPath = await CreateNextProject(newProjectParentDir, normalizedName);
+
+            // Success! Set as selected project
+            setSelectedProjectForWelcome({
+                path: projectPath,
+                name: normalizedName
+            });
+
+            // Reset creation state
+            setIsCreatingProject(false);
+            setShowProjectNameInput(false);
+            setProjectCreationProgress('');
+            setProjectNameInput('');
+            setNewProjectParentDir('');
+
+            // Reload recent projects
+            await loadRecentProjects();
+
+            // Show success message
+            setToastMessage(`Project "${normalizedName}" created successfully!`);
+
+            // Detect ports for the new project (will happen automatically via polling)
+
+        } catch (error) {
+            console.error('Error creating project:', error);
+            setIsCreatingProject(false);
+            setProjectCreationProgress('');
+            setToastMessage(`Failed to create project: ${error}`);
+
+            // Return to welcome screen
+            setShowProjectNameInput(false);
+            setProjectNameInput('');
+            setNewProjectParentDir('');
+            setProjectNameError('');
+        }
+    };
+
+    const handleCancelProjectCreation = () => {
+        setShowProjectNameInput(false);
+        setProjectNameInput('');
+        setProjectNameError('');
+        setNewProjectParentDir('');
+        setIsCreatingProject(false);
+        setProjectCreationProgress('');
+    };
+
     const handleSaveAPIKey = async () => {
         setApiKeyError('');
 
@@ -808,6 +925,16 @@ function App() {
                     onRefreshPorts={handleRefreshPorts}
                     devServerStarting={devServerStarting}
                     devServerPort={devServerPort}
+                    onNewProject={handleNewProject}
+                    showProjectNameInput={showProjectNameInput}
+                    newProjectParentDir={newProjectParentDir}
+                    projectNameInput={projectNameInput}
+                    projectNameError={projectNameError}
+                    isCreatingProject={isCreatingProject}
+                    projectCreationProgress={projectCreationProgress}
+                    onProjectNameChange={setProjectNameInput}
+                    onCreateProject={handleCreateProject}
+                    onCancelProjectCreation={handleCancelProjectCreation}
                 />
             ) : (
                 <>

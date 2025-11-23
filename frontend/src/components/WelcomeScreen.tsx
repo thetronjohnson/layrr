@@ -1,5 +1,5 @@
 import React from 'react';
-import { FolderOpen, GithubLogo, ArrowClockwise } from '@phosphor-icons/react';
+import { FolderOpen, GithubLogo, ArrowClockwise, FolderPlus } from '@phosphor-icons/react';
 
 interface RecentProject {
   path: string;
@@ -27,6 +27,16 @@ interface WelcomeScreenProps {
   onRefreshPorts?: () => Promise<void>;
   devServerStarting?: boolean;
   devServerPort?: number;
+  onNewProject?: () => void;
+  showProjectNameInput?: boolean;
+  newProjectParentDir?: string;
+  projectNameInput?: string;
+  projectNameError?: string;
+  isCreatingProject?: boolean;
+  projectCreationProgress?: string;
+  onProjectNameChange?: (name: string) => void;
+  onCreateProject?: () => void;
+  onCancelProjectCreation?: () => void;
 }
 
 export default function WelcomeScreen({
@@ -40,7 +50,17 @@ export default function WelcomeScreen({
   detectedPorts,
   onRefreshPorts,
   devServerStarting = false,
-  devServerPort = 0
+  devServerPort = 0,
+  onNewProject,
+  showProjectNameInput = false,
+  newProjectParentDir = '',
+  projectNameInput = '',
+  projectNameError = '',
+  isCreatingProject = false,
+  projectCreationProgress = '',
+  onProjectNameChange,
+  onCreateProject,
+  onCancelProjectCreation
 }: WelcomeScreenProps) {
   const [isRefreshing, setIsRefreshing] = React.useState(false);
 
@@ -63,7 +83,18 @@ export default function WelcomeScreen({
         </div>
 
         {/* Action Cards */}
-        <div className="grid grid-cols-2 gap-4 mb-8">
+        <div className="grid grid-cols-3 gap-4 mb-8">
+          {/* New Project */}
+          <button
+            onClick={onNewProject}
+            className="bg-primary hover:bg-primary-dark rounded-xl p-6 text-center transition-all border border group"
+          >
+            <div className="flex flex-col items-center gap-3">
+              <FolderPlus size={32} weight="duotone" className="text-gray-700" />
+              <span className="text-gray-900 text-sm font-medium">New project</span>
+            </div>
+          </button>
+
           {/* Open Project */}
           <button
             onClick={onOpenProject}
@@ -92,8 +123,70 @@ export default function WelcomeScreen({
           </button>
         </div>
 
+        {/* Project Name Input Section */}
+        {showProjectNameInput && !isCreatingProject && (
+          <div className="rounded-lg p-4 mb-6">
+            <div className="space-y-3">
+              <div>
+                <p className="text-gray-700 text-xs mb-1">New Project Location</p>
+                <p className="text-gray-600 text-xs font-mono mt-1">{newProjectParentDir}</p>
+              </div>
+
+              <div>
+                <label className="block text-gray-700 text-xs mb-1.5">
+                  Project Name
+                </label>
+                <input
+                  type="text"
+                  value={projectNameInput}
+                  onChange={(e) => onProjectNameChange?.(e.target.value)}
+                  placeholder="my-awesome-project"
+                  className="w-full bg-white border border-gray-300 rounded-md py-2 px-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  autoFocus
+                />
+                {projectNameError && (
+                  <p className="text-red-600 text-xs mt-1">{projectNameError}</p>
+                )}
+                <p className="text-gray-500 text-xs mt-1">
+                  Spaces will be converted to hyphens. Only letters, numbers, hyphens, and underscores allowed.
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={onCancelProjectCreation}
+                  className="flex-1 bg-white border border rounded-md py-2.5 px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={onCreateProject}
+                  disabled={!projectNameInput.trim()}
+                  className="flex-1 bg-purple-600 border border-purple-600 rounded-md py-2.5 px-4 text-sm font-medium text-white hover:bg-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Create Project
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Project Creation Progress */}
+        {isCreatingProject && (
+          <div className="rounded-lg p-6 mb-6 text-center">
+            <div className="flex flex-col items-center gap-4">
+              <ArrowClockwise size={40} className="animate-spin text-purple-600" />
+              <div>
+                <p className="text-gray-900 text-sm font-medium mb-1">Creating {projectNameInput}...</p>
+                <p className="text-gray-600 text-xs">{projectCreationProgress}</p>
+              </div>
+              <p className="text-gray-500 text-xs">This may take a few minutes</p>
+            </div>
+          </div>
+        )}
+
         {/* Selected Project Info */}
-        {selectedProject && (
+        {selectedProject && !showProjectNameInput && !isCreatingProject && (
           <div className="rounded-lg p-4 mb-6">
             <div className="space-y-3">
               <div>
@@ -102,78 +195,21 @@ export default function WelcomeScreen({
                 <p className="text-gray-600 text-xs font-mono mt-1">{selectedProject.path}</p>
               </div>
 
-              {/* Detected Ports or Port Input */}
-              <div>
-                <label className="block text-gray-700 text-xs mb-1.5">
-                  Source Port{' '}
-                  {detectedPorts.length === 0 && !devServerStarting && <span className="text-gray-500">(optional)</span>}
-                </label>
-
-                {/* Show dev server starting status */}
+              {/* Open Project Button */}
+              <button
+                onClick={() => onStartProxy()}
+                disabled={devServerStarting}
+                className="w-full bg-primary border border rounded-md py-2.5 px-4 text-sm font-medium text-gray-900 hover:bg-primary-dark transition-all disabled:opacity-50"
+              >
                 {devServerStarting ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <ArrowClockwise size={16} className="animate-spin text-purple-600" />
-                      <span className="text-gray-700 text-sm">Starting dev server...</span>
-                    </div>
-                  </div>
-                ) : devServerPort > 0 ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-gray-900 text-sm font-mono">
-                        :{devServerPort}
-                      </span>
-                      <span
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          onStartProxy(devServerPort.toString());
-                        }}
-                        className="text-gray-900 text-sm cursor-pointer hover:opacity-70 transition-opacity"
-                      >
-                        Open
-                      </span>
-                    </div>
-                  </div>
-                ) : detectedPorts.length > 0 ? (
-                  <div className="space-y-2">
-                    {detectedPorts.map((portInfo) => (
-                      <div key={portInfo.port} className="flex items-center justify-between gap-3">
-                        <span className="text-gray-900 text-sm font-mono">
-                          :{portInfo.port}
-                        </span>
-                        <span
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            onStartProxy(portInfo.port.toString());
-                          }}
-                          className="text-gray-900 text-sm cursor-pointer hover:opacity-70 transition-opacity"
-                        >
-                          Open
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  <span className="flex items-center justify-center gap-2">
+                    <ArrowClockwise size={16} className="animate-spin" />
+                    Starting dev server...
+                  </span>
                 ) : (
-                  <div className="space-y-2">
-                    <p className="text-gray-600 text-xs">
-                      Please start your development server
-                    </p>
-                    <button
-                      onClick={handleRefresh}
-                      disabled={isRefreshing}
-                      className="w-full flex items-center justify-center gap-2 bg-primary border border rounded-md py-2 px-3 text-sm text-gray-700 hover:bg-primary-dark transition-all disabled:opacity-50"
-                    >
-                      <ArrowClockwise
-                        size={16}
-                        className={isRefreshing ? 'animate-spin' : ''}
-                      />
-                      Refresh
-                    </button>
-                  </div>
+                  'Open project'
                 )}
-              </div>
+              </button>
             </div>
           </div>
         )}
@@ -199,11 +235,6 @@ export default function WelcomeScreen({
                       </p>
                       <p className="text-gray-600 text-xs truncate">~/{project.path.split('/').slice(-2).join('/')}</p>
                     </div>
-                    {project.targetPort > 0 && (
-                      <span className="text-gray-600 text-xs font-mono ml-2">
-                        :{project.targetPort}
-                      </span>
-                    )}
                   </div>
                 </button>
               ))}
