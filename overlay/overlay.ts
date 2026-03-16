@@ -341,9 +341,11 @@
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.type === 'edit-result') {
-        const btn = document.querySelector(`.${L}-sb`) as HTMLButtonElement;
-        btn.disabled = false; btn.classList.remove('loading');
-        if (msg.success) { editCount++; updateBadge(); toast(msg.message || 'Done! Reloading...', 'success'); setTimeout(() => location.reload(), 1500); }
+        document.querySelectorAll(`.${L}-sb`).forEach((btn) => {
+          (btn as HTMLButtonElement).disabled = false;
+          btn.classList.remove('loading');
+        });
+        if (msg.success) { editCount++; updateBadge(); location.reload(); }
         else toast(msg.message || 'Edit failed', 'error');
       }
     };
