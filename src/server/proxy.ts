@@ -15,7 +15,7 @@ export async function startProxy(
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const overlayPath = join(__dirname, '..', 'overlay.js');
 
-  const phosphorDir = join(__dirname, '..', 'phosphor');
+  const fontsDir = join(__dirname, '..', 'fonts');
 
   const MIME: Record<string, string> = {
     '.css': 'text/css',
@@ -39,10 +39,10 @@ export async function startProxy(
       return;
     }
 
-    // Serve Phosphor icon assets
-    if (req.url?.startsWith('/__layrr__/phosphor/')) {
-      const fileName = req.url.replace('/__layrr__/phosphor/', '');
-      const filePath = join(phosphorDir, fileName);
+    // Serve font assets
+    if (req.url?.startsWith('/__layrr__/fonts/')) {
+      const fileName = req.url.replace('/__layrr__/fonts/', '');
+      const filePath = join(fontsDir, fileName);
       const ext = '.' + fileName.split('.').pop();
       try {
         const data = readFileSync(filePath);

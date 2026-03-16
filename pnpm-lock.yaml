@@ -11,6 +11,9 @@ importers:
       '@anthropic-ai/claude-code':
         specifier: ^2.1.76
         version: 2.1.76
+      lucide-static:
+        specifier: ^0.577.0
+        version: 0.577.0
       open:
         specifier: ^10.0.0
         version: 10.2.0
@@ -18,9 +21,6 @@ importers:
         specifier: ^8.0.0
         version: 8.19.0
     devDependencies:
-      '@phosphor-icons/web':
-        specifier: ^2.1.2
-        version: 2.1.2
       '@types/node':
         specifier: ^25.0.0
         version: 25.5.0
@@ -299,9 +299,6 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@phosphor-icons/web@2.1.2':
-    resolution: {integrity: sha512-rPAR9o/bEcp4Cw4DEeZHXf+nlGCMNGkNDRizYHM47NLxz9vvEHp/Tt6FMK1NcWadzw/pFDPnRBGi/ofRya958A==}
-
   '@types/node@25.5.0':
     resolution: {integrity: sha512-jp2P3tQMSxWugkCUKLRPVUpGaL5MVFwF8RDuSRztfwgN1wmqJeMSbKlnEtQqU8UrhTmzEmZdu2I6v2dpp7XIxw==}
 
@@ -350,6 +347,9 @@ packages:
   is-wsl@3.1.1:
     resolution: {integrity: sha512-e6rvdUCiQCAuumZslxRJWR/Doq4VpPR82kqclvcS0efgt430SlGIk05vdCN58+VrzgtIcfNODjozVielycD4Sw==}
     engines: {node: '>=16'}
+
+  lucide-static@0.577.0:
+    resolution: {integrity: sha512-hx39J5Tq4JWF2ALY+5YRg+SxQLpeAmLJDXNcqiBJH/UuVwp43it9fyki/onZO7AVFgG5ZbB+fWwZR9mwGHE2XQ==}
 
   open@10.2.0:
     resolution: {integrity: sha512-YgBpdJHPyQ2UE5x+hlSXcnejzAvD0b22U2OuAP+8OnlJT+PjWPxtgmGqKKc+RgTM63U9gN0YzrYc71R2WT/hTA==}
@@ -545,8 +545,6 @@ snapshots:
   '@img/sharp-win32-x64@0.34.5':
     optional: true
 
-  '@phosphor-icons/web@2.1.2': {}
-
   '@types/node@25.5.0':
     dependencies:
       undici-types: 7.18.2
@@ -613,6 +611,8 @@ snapshots:
   is-wsl@3.1.1:
     dependencies:
       is-inside-container: 1.0.0
+
+  lucide-static@0.577.0: {}
 
   open@10.2.0:
     dependencies:

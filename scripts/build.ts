@@ -13,14 +13,13 @@ buildSync({
 });
 console.log('Built dist/overlay.js');
 
-// Build CLI + MCP server (TypeScript)
+// Build CLI + server (TypeScript)
 execSync('npx tsc', { stdio: 'inherit' });
 console.log('Built dist/ (TypeScript)');
 
-// Copy Phosphor font assets
-mkdirSync('dist/phosphor', { recursive: true });
-for (const file of ['style.css', 'Phosphor.woff2', 'Phosphor.woff']) {
-  cpSync(`node_modules/@phosphor-icons/web/src/regular/${file}`, `dist/phosphor/${file}`);
+// Copy Lucide font assets
+mkdirSync('dist/fonts', { recursive: true });
+for (const file of ['lucide.css', 'lucide.woff2', 'lucide.woff']) {
+  cpSync(`node_modules/lucide-static/font/${file}`, `dist/fonts/${file}`);
 }
-console.log('Copied Phosphor fonts to dist/phosphor/');
-
+console.log('Copied Lucide fonts to dist/fonts/');
