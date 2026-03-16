@@ -1,0 +1,111 @@
+import { spawn, type ChildProcess } from 'child_process';
+import { randomUUID } from 'crypto';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import type { PendingEditRequest } from './server/edit-queue.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const claudeBin = join(__dirname, '..', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+
+interface AgentOptions {
+  projectRoot: string;
+}
+
+export class ClaudeAgent {
+  private sessionId: string;
+  private projectRoot: string;
+
+  constructor(opts: AgentOptions) {
+    this.sessionId = randomUUID();
+    this.projectRoot = opts.projectRoot;
+  }
+
+  async applyEdit(request: PendingEditRequest): Promise<{ success: boolean; message: string }> {
+    const { instruction, tagName, className, textContent, selector, sourceLocation } = request;
+
+    let prompt = `The user is visually editing their web app. They selected a UI element and want to make a change.
+
+**Selected element:**
+- Tag: <${tagName}>
+- Class: "${className}"
+- Text: "${textContent}"
+- Selector: ${selector}`;
+
+    if (sourceLocation) {
+      prompt += `
+
+**Source location found:**
+- File: ${sourceLocation.filePath}
+- Line: ${sourceLocation.line}
+- Code context:
+\`\`\`
+${sourceLocation.context}
+\`\`\``;
+    }
+
+    prompt += `
+
+**User instruction:** "${instruction}"
+
+Read the file, make the minimal edit needed, and save it. Only change what was requested.`;
+
+    return new Promise((resolve) => {
+      const args = [
+        claudeBin,
+        '--print',
+        '--output-format', 'text',
+        '--dangerously-skip-permissions',
+        '--session-id', this.sessionId,
+        '--no-session-persistence',
+        '-p', prompt,
+      ];
+
+      const proc = spawn('node', args, {
+        cwd: this.projectRoot,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env },
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      proc.stdout?.on('data', (data: Buffer) => {
+        stdout += data.toString();
+      });
+
+      proc.stderr?.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      proc.on('close', (code) => {
+        if (code === 0) {
+          resolve({
+            success: true,
+            message: stdout.trim().slice(-200) || 'Edit applied',
+          });
+        } else {
+          resolve({
+            success: false,
+            message: stderr.trim().slice(-200) || `Claude exited with code ${code}`,
+          });
+        }
+      });
+
+      proc.on('error', (err) => {
+        resolve({
+          success: false,
+          message: `Failed to spawn Claude: ${err.message}`,
+        });
+      });
+
+      // Timeout after 60 seconds
+      setTimeout(() => {
+        proc.kill();
+        resolve({
+          success: false,
+          message: 'Edit timed out after 60 seconds',
+        });
+      }, 60000);
+    });
+  }
+}
