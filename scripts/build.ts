@@ -1,6 +1,6 @@
 import { execSync } from 'child_process';
 import { buildSync } from 'esbuild';
-import { cpSync, mkdirSync } from 'fs';
+import { cpSync, mkdirSync, chmodSync } from 'fs';
 
 // Build overlay (browser bundle)
 buildSync({
@@ -15,6 +15,7 @@ console.log('Built dist/overlay.js');
 
 // Build CLI + server (TypeScript)
 execSync('npx tsc', { stdio: 'inherit' });
+chmodSync('dist/cli.js', 0o755);
 console.log('Built dist/ (TypeScript)');
 
 // Copy Lucide font assets

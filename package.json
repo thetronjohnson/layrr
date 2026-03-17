@@ -1,11 +1,9 @@
 {
   "name": "layrr",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Point, click, and edit any web app with AI",
   "type": "module",
-  "bin": {
-    "layrr": "./dist/cli.js"
-  },
+  "bin": "./dist/cli.js",
   "files": [
     "dist/"
   ],
