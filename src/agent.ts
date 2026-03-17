@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'child_process';
+import { spawnSync, spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -6,6 +6,29 @@ import type { PendingEditRequest } from './server/edit-queue.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const claudeBin = join(__dirname, '..', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+
+export function checkClaude(): { ok: boolean; error?: string } {
+  try {
+    const result = spawnSync('node', [claudeBin, '--version'], {
+      timeout: 10000,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    if (result.status === 0) {
+      const version = result.stdout?.toString().trim();
+      return { ok: true };
+    }
+
+    const stderr = result.stderr?.toString() || '';
+    if (stderr.includes('auth') || stderr.includes('login') || stderr.includes('API key')) {
+      return { ok: false, error: 'not-authenticated' };
+    }
+
+    return { ok: false, error: `claude exited with code ${result.status}` };
+  } catch {
+    return { ok: false, error: 'not-found' };
+  }
+}
 
 interface AgentOptions {
   projectRoot: string;
@@ -84,27 +107,22 @@ Read the file, make the minimal edit needed, and save it. Only change what was r
             message: stdout.trim().slice(-200) || 'Edit applied',
           });
         } else {
-          resolve({
-            success: false,
-            message: stderr.trim().slice(-200) || `Claude exited with code ${code}`,
-          });
+          const err = stderr.trim();
+          if (err.includes('auth') || err.includes('login') || err.includes('API key')) {
+            resolve({ success: false, message: 'Not authenticated. Run: claude login' });
+          } else {
+            resolve({ success: false, message: err.slice(-200) || `Claude exited with code ${code}` });
+          }
         }
       });
 
       proc.on('error', (err) => {
-        resolve({
-          success: false,
-          message: `Failed to spawn Claude: ${err.message}`,
-        });
+        resolve({ success: false, message: `Failed to spawn Claude: ${err.message}` });
       });
 
-      // Timeout after 60 seconds
       setTimeout(() => {
         proc.kill();
-        resolve({
-          success: false,
-          message: 'Edit timed out after 60 seconds',
-        });
+        resolve({ success: false, message: 'Edit timed out after 60 seconds' });
       }, 60000);
     });
   }
