@@ -12,9 +12,20 @@ export interface PendingEditRequest {
 type EditResolver = (request: PendingEditRequest) => void;
 type WsNotifier = (success: boolean, message?: string) => void;
 
+export interface EditResult {
+  success: boolean;
+  message: string;
+  timestamp: number;
+}
+
 class EditQueue {
   private waitingResolver: EditResolver | null = null;
   private wsNotifier: WsNotifier | null = null;
+  private _lastResult: EditResult | null = null;
+
+  get lastResult(): EditResult | null {
+    return this._lastResult;
+  }
 
   push(request: PendingEditRequest) {
     if (this.waitingResolver) {
@@ -36,6 +47,11 @@ class EditQueue {
   }
 
   notifyComplete(success: boolean, message?: string) {
+    this._lastResult = {
+      success,
+      message: message || (success ? 'Edit applied!' : 'Edit failed'),
+      timestamp: Date.now(),
+    };
     if (this.wsNotifier) {
       this.wsNotifier(success, message);
     }

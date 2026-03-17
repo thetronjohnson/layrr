@@ -4,6 +4,7 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { handleWsConnection } from './ws-handler.js';
+import { editQueue } from './edit-queue.js';
 
 let httpServer: Server | null = null;
 
@@ -36,6 +37,14 @@ export async function startProxy(
         res.writeHead(500);
         res.end('// overlay not built');
       }
+      return;
+    }
+
+    // Edit status REST fallback
+    if (req.url === '/__layrr__/edit-status') {
+      const result = editQueue.lastResult;
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(result || { success: null }));
       return;
     }
 

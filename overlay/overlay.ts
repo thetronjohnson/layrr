@@ -6,12 +6,40 @@
   const L = '__layrr';
 
   type Mode = 'browse' | 'edit';
-  let mode: Mode = 'browse';
+
+  // ---- Persist state across navigations ----
+  const SS_KEY = '__layrr_state';
+  function loadState() {
+    try {
+      const raw = sessionStorage.getItem(SS_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return {};
+  }
+  function saveState() {
+    try {
+      const bar = document.getElementById(`${L}-bar`);
+      const state: any = { mode, editCount, editHistory };
+      if (bar) {
+        const s = bar.style;
+        if (s.left && s.top) {
+          state.barPos = { left: s.left, top: s.top };
+        }
+      }
+      sessionStorage.setItem(SS_KEY, JSON.stringify(state));
+    } catch {}
+  }
+
+  const saved = loadState();
+  let mode: Mode = saved.mode || 'browse';
   let hoveredEl: HTMLElement | null = null;
   let selectedEl: HTMLElement | null = null;
   let ws: WebSocket | null = null;
   let connected = false;
-  let editCount = 0;
+  let editCount: number = saved.editCount || 0;
+  let editHistory: Array<{ tagName: string; instruction: string }> = saved.editHistory || [];
+  let lastEdit: { tagName: string; instruction: string } | null = null;
+  let historyPage = 0;
   let panelDragOffset = { x: 0, y: 0 };
   let isDragging = false;
 
@@ -157,24 +185,38 @@
         display:flex;align-items:center;
         background:${C.panel};
         backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);
-        border:1px solid ${C.panelBorder};border-radius:9px;
+        border:1px solid ${C.panelBorder};border-radius:50px;
         box-shadow:0 4px 20px rgba(0,0,0,.35);
         user-select:none;animation:${L}-up .3s cubic-bezier(.2,.8,.2,1);
-        padding:4px;height:42px;transition:box-shadow .12s,border-color .12s;
+        padding:5px;height:48px;transition:box-shadow .12s,border-color .12s;
       }
       #${L}-bar:hover{border-color:rgba(148,163,184,.16)}
       #${L}-bar.dragging{box-shadow:0 8px 32px rgba(0,0,0,.45),0 0 0 1px rgba(161,161,170,.15);cursor:grabbing}
 
-      .${L}-bd{display:flex;align-items:center;justify-content:center;width:20px;height:34px;cursor:grab;color:${C.textDim};font-size:13px;transition:color .12s;flex-shrink:0}
+      .${L}-bd{display:flex;align-items:center;justify-content:center;width:24px;height:38px;cursor:grab;color:${C.textDim};font-size:14px;transition:color .12s;flex-shrink:0}
       .${L}-bd:hover{color:${C.textMuted}}
       .${L}-bd:active{cursor:grabbing}
 
       .${L}-bb{
-        height:34px;border:none;border-radius:8px;padding:0 14px;
-        font-size:13px;font-weight:600;cursor:pointer;
-        transition:all .12s ease;display:flex;align-items:center;gap:4px;
-        white-space:nowrap;font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;
+        width:38px;height:38px;border:none;border-radius:50%;padding:0;
+        font-size:17px;cursor:pointer;
+        transition:all .12s ease;display:flex;align-items:center;justify-content:center;
+        position:relative;gap:0;
       }
+      .${L}-bb::after{
+        content:attr(data-tip);position:absolute;bottom:calc(100% + 10px);left:50%;
+        transform:translateX(-50%) translateY(4px);
+        background:${C.panel};color:${C.textMuted};
+        font-size:11px;font-weight:500;letter-spacing:.01em;
+        font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;
+        padding:5px 10px;border-radius:8px;white-space:nowrap;
+        border:1px solid ${C.panelBorder};
+        box-shadow:0 8px 24px rgba(0,0,0,.35);
+        backdrop-filter:blur(12px);
+        opacity:0;pointer-events:none;
+        transition:opacity .15s ease,transform .15s cubic-bezier(.2,.8,.2,1);
+      }
+      .${L}-bb:hover::after{opacity:1;transform:translateX(-50%) translateY(0)}
       .${L}-bbr{background:transparent;color:${C.textDim}}
       .${L}-bbr.active{background:${C.surface};color:${C.text}}
       .${L}-bbr:hover:not(.active){color:${C.textMuted};transform:scale(1.02)}
@@ -184,13 +226,45 @@
       .${L}-bbe:hover:not(.active){color:${C.textMuted};transform:scale(1.02)}
       .${L}-bbe:active{transform:scale(.97)}
 
-      .${L}-bs{width:1px;height:18px;background:${C.border};margin:0 2px}
+      .${L}-bs{width:1px;height:22px;background:${C.border};margin:0 2px}
       .${L}-bdt{width:5px;height:5px;border-radius:50%;margin:0 6px 0 2px;transition:background .3s}
       .${L}-bdt.on{background:${C.success};box-shadow:0 0 5px rgba(52,211,153,.35)}
       .${L}-bdt.off{background:${C.error};animation:${L}-pulse 2s infinite}
-      .${L}-bg{background:rgba(255,255,255,.1);color:${C.text};font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:1px}
-      .${L}-bk{font-size:11px;color:${C.textDim};padding:0 5px;display:flex;align-items:center}
-      .${L}-bk kbd{background:${C.surface};border-radius:3px;padding:2px 6px;font-family:inherit;font-size:11px;border:1px solid ${C.border};color:${C.accent}}
+      .${L}-bhi{background:transparent;color:${C.textDim}}
+      .${L}-bhi:hover{color:${C.textMuted};transform:scale(1.02)}
+      .${L}-bhi:active{transform:scale(.97)}
+      .${L}-bhi.open{background:${C.surface};color:${C.text}}
+
+      /* History panel */
+      #${L}-history{
+        position:absolute;bottom:calc(100% + 10px);right:0;
+        width:300px;max-height:280px;overflow-y:auto;
+        background:${C.panel};
+        backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+        border:1px solid ${C.panelBorder};border-radius:12px;
+        box-shadow:0 16px 48px rgba(0,0,0,.45);
+        display:none;animation:${L}-in .2s cubic-bezier(.2,.8,.2,1);
+        padding:0;
+      }
+      #${L}-history.open{display:block}
+      .${L}-hh{
+        padding:10px 14px 6px;font-size:10px;font-weight:700;
+        text-transform:uppercase;letter-spacing:.06em;color:${C.textDim};
+        border-bottom:1px solid ${C.border};
+      }
+      .${L}-he{
+        padding:10px 14px;border-bottom:1px solid ${C.border};
+        font-size:12px;color:${C.text};
+      }
+      .${L}-he:last-child{border-bottom:none}
+      .${L}-he-el{font-family:'SF Mono',Menlo,monospace;font-size:10px;color:${C.textDim};margin-bottom:2px}
+      .${L}-he-inst{color:${C.textMuted};font-size:11px}
+      .${L}-he-empty{padding:20px 14px;text-align:center;color:${C.textDim};font-size:12px}
+      .${L}-hp{display:flex;align-items:center;justify-content:space-between;padding:6px 14px;border-top:1px solid ${C.border}}
+      .${L}-hp button{background:none;border:none;color:${C.textDim};font-size:11px;cursor:pointer;padding:2px 6px;border-radius:4px;font-family:inherit;transition:color .12s,background .12s}
+      .${L}-hp button:hover:not(:disabled){color:${C.textMuted};background:${C.surface}}
+      .${L}-hp button:disabled{opacity:.3;cursor:default}
+      .${L}-hp span{font-size:10px;color:${C.textDim}}
     `;
     document.head.appendChild(s);
   }
@@ -244,11 +318,15 @@
     bar.innerHTML = `
       <div class="${L}-bd"><i class="icon-grip-vertical"></i></div>
       <div class="${L}-bs"></div>
-      <button class="${L}-bb ${L}-bbr active"><i class="icon-mouse-pointer"></i> Browse</button>
-      <button class="${L}-bb ${L}-bbe"><i class="icon-pencil"></i> Edit<span class="${L}-bg" style="display:none">0</span></button>
+      <button class="${L}-bb ${L}-bbr active" data-tip="Browse"><i class="icon-mouse-pointer"></i></button>
+      <button class="${L}-bb ${L}-bbe" data-tip="Edit"><i class="icon-pencil"></i></button>
       <div class="${L}-bs"></div>
-      <div class="${L}-bk"><kbd>⌘K</kbd></div>
+      <button class="${L}-bb ${L}-bhi" data-tip="History"><i class="icon-clock"></i></button>
       <div class="${L}-bdt off"></div>
+      <div id="${L}-history">
+        <div class="${L}-hh">Edit history</div>
+        <div class="${L}-he-empty">No edits yet</div>
+      </div>
     `;
     root.appendChild(bar);
 
@@ -334,30 +412,119 @@
   }
 
   // ---- WebSocket ----
+  let activeSendBtn: HTMLButtonElement | null = null;
+  let hlEl: HTMLElement | null = null;
+  let labelEl: HTMLElement | null = null;
+  let panelEl: HTMLElement | null = null;
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let spinnerTimeout: ReturnType<typeof setTimeout> | null = null;
+  let lastEditTimestamp = 0;
+
+  function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (spinnerTimeout) { clearTimeout(spinnerTimeout); spinnerTimeout = null; }
+  }
+
+  function startPolling() {
+    stopPolling();
+    pollTimer = setInterval(async () => {
+      try {
+        const resp = await fetch('/__layrr__/edit-status');
+        const data = await resp.json();
+        if (data.success !== null && data.timestamp > lastEditTimestamp) {
+          lastEditTimestamp = data.timestamp;
+          stopPolling();
+          onEditResult(data);
+        }
+      } catch {}
+    }, 2000);
+    // Spinner safety net: 60s timeout
+    spinnerTimeout = setTimeout(() => {
+      stopPolling();
+      if (activeSendBtn) {
+        activeSendBtn.disabled = false;
+        activeSendBtn.classList.remove('loading');
+        activeSendBtn = null;
+      }
+      toast('Edit timed out — no response received', 'error');
+    }, 60000);
+  }
+
+  function onEditResult(msg: any) {
+    stopPolling();
+    // Reset button
+    if (activeSendBtn) {
+      activeSendBtn.disabled = false;
+      activeSendBtn.classList.remove('loading');
+      activeSendBtn = null;
+    }
+    if (msg.success) {
+      editCount++;
+      if (lastEdit) addEditToHistory(lastEdit.tagName, lastEdit.instruction);
+      lastEdit = null;
+      selectedEl = null;
+      hoveredEl = null;
+      if (hlEl) { hlEl.style.display = 'none'; hlEl.classList.remove('selected'); }
+      if (labelEl) { labelEl.style.display = 'none'; }
+      if (panelEl) { panelEl.style.display = 'none'; }
+      toast('Done!', 'success');
+      setTimeout(() => location.reload(), 2000);
+    } else {
+      toast(msg.message || 'Edit failed', 'error');
+    }
+  }
+
   function connectWs(bar: HTMLElement) {
     const dot = bar.querySelector(`.${L}-bdt`) as HTMLElement;
     ws = new WebSocket(`ws://${location.hostname}:${WS_PORT}/__layrr__/ws`);
     ws.onopen = () => { connected = true; dot.className = `${L}-bdt on`; ws!.send(JSON.stringify({ type: 'overlay-ready' })); };
     ws.onmessage = (ev) => {
-      const msg = JSON.parse(ev.data);
-      if (msg.type === 'edit-result') {
-        document.querySelectorAll(`.${L}-sb`).forEach((btn) => {
-          (btn as HTMLButtonElement).disabled = false;
-          btn.classList.remove('loading');
-        });
-        if (msg.success) { editCount++; updateBadge(); location.reload(); }
-        else toast(msg.message || 'Edit failed', 'error');
-      }
+      try {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === 'edit-result') onEditResult(msg);
+      } catch {}
     };
     ws.onclose = () => { connected = false; dot.className = `${L}-bdt off`; setTimeout(() => connectWs(bar), 2000); };
   }
 
-  function updateBadge() {
-    const b = document.querySelector(`.${L}-bg`) as HTMLElement;
-    if (editCount > 0) { b.textContent = String(editCount); b.style.display = 'inline'; }
+  function addEditToHistory(tagName: string, instruction: string) {
+    editHistory.push({ tagName, instruction });
+    historyPage = 0;
+    renderHistory();
+    saveState();
   }
 
-  function setMode(m: Mode, hl: HTMLElement, label: HTMLElement, panel: HTMLElement, bar: HTMLElement, dim: HTMLElement) {
+  function renderHistory() {
+    const container = document.getElementById(`${L}-history`);
+    if (!container) return;
+    if (editHistory.length === 0) {
+      container.innerHTML = `<div class="${L}-hh">Edit history</div><div class="${L}-he-empty">No edits yet</div>`;
+      return;
+    }
+    const PAGE_SIZE = 5;
+    const reversed = editHistory.slice().reverse();
+    const totalPages = Math.ceil(reversed.length / PAGE_SIZE);
+    if (historyPage >= totalPages) historyPage = totalPages - 1;
+    const start = historyPage * PAGE_SIZE;
+    const page = reversed.slice(start, start + PAGE_SIZE);
+
+    let html = `<div class="${L}-hh">Edit history (${editHistory.length})</div>`;
+    html += page.map(e =>
+      `<div class="${L}-he"><div class="${L}-he-el">&lt;${e.tagName}&gt;</div><div class="${L}-he-inst">${e.instruction}</div></div>`
+    ).join('');
+    if (totalPages > 1) {
+      html += `<div class="${L}-hp">` +
+        `<button class="${L}-hp-prev"${historyPage === 0 ? ' disabled' : ''}>&larr; Newer</button>` +
+        `<span>${historyPage + 1} / ${totalPages}</span>` +
+        `<button class="${L}-hp-next"${historyPage >= totalPages - 1 ? ' disabled' : ''}>Older &rarr;</button>` +
+        `</div>`;
+    }
+    container.innerHTML = html;
+    container.querySelector(`.${L}-hp-prev`)?.addEventListener('click', () => { historyPage--; renderHistory(); });
+    container.querySelector(`.${L}-hp-next`)?.addEventListener('click', () => { historyPage++; renderHistory(); });
+  }
+
+  function setMode(m: Mode, hl: HTMLElement, label: HTMLElement, panel: HTMLElement, bar: HTMLElement, dim: HTMLElement, silent = false) {
     mode = m;
     const br = bar.querySelector(`.${L}-bbr`) as HTMLElement;
     const ed = bar.querySelector(`.${L}-bbe`) as HTMLElement;
@@ -370,13 +537,18 @@
     } else {
       br.classList.remove('active'); ed.classList.add('active');
       document.body.style.cursor = 'crosshair'; dim.classList.add('active');
-      toast('Click any element', 'info');
+      selectedEl = null; hoveredEl = null;
+      hl.style.display = 'none'; hl.classList.remove('selected');
+      label.style.display = 'none'; panel.style.display = 'none';
+      if (!silent) toast('Click any element', 'info');
     }
+    saveState();
   }
 
   function init() {
     loadIcons(); injectStyles();
     const { dim, hl, label, panel, bar } = createElements();
+    hlEl = hl; labelEl = label; panelEl = panel;
     connectWs(bar);
 
     const input = panel.querySelector(`.${L}-in`) as HTMLTextAreaElement;
@@ -385,11 +557,29 @@
     const header = panel.querySelector(`.${L}-ph`) as HTMLElement;
     const browseBtn = bar.querySelector(`.${L}-bbr`) as HTMLElement;
     const editBtn = bar.querySelector(`.${L}-bbe`) as HTMLElement;
+    const histBtn = bar.querySelector(`.${L}-bhi`) as HTMLElement;
+    const histPanel = document.getElementById(`${L}-history`) as HTMLElement;
     const barDrag = bar.querySelector(`.${L}-bd`) as HTMLElement;
 
     input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 72) + 'px'; });
     browseBtn.addEventListener('click', () => setMode('browse', hl, label, panel, bar, dim));
     editBtn.addEventListener('click', () => setMode('edit', hl, label, panel, bar, dim));
+
+    // History toggle
+    histBtn.addEventListener('click', () => {
+      const isOpen = histPanel.classList.toggle('open');
+      histBtn.classList.toggle('open', isOpen);
+    });
+
+    // Restore saved state
+    renderHistory();
+    if (saved.barPos) {
+      bar.style.right = 'auto'; bar.style.bottom = 'auto';
+      bar.style.left = saved.barPos.left; bar.style.top = saved.barPos.top;
+    }
+    if (mode === 'edit') {
+      setMode('edit', hl, label, panel, bar, dim, true);
+    }
 
     let barDragging = false, barOff = { x: 0, y: 0 };
     barDrag.addEventListener('mousedown', (e: MouseEvent) => {
@@ -407,7 +597,7 @@
       if (isOwn(t)) { hl.style.display = 'none'; label.style.display = 'none'; return; }
       if (t !== hoveredEl) { hoveredEl = t; posHL(t, hl); posLabel(t, label); }
     }, true);
-    document.addEventListener('mouseup', () => { if (barDragging) { barDragging = false; bar.classList.remove('dragging'); } isDragging = false; });
+    document.addEventListener('mouseup', () => { if (barDragging) { barDragging = false; bar.classList.remove('dragging'); saveState(); } isDragging = false; });
 
     header.addEventListener('mousedown', (e: MouseEvent) => {
       if ((e.target as HTMLElement).closest(`.${L}-px`)) return;
@@ -438,8 +628,13 @@
     function sendEdit() {
       if (!selectedEl || !ws || ws.readyState !== WebSocket.OPEN) return;
       const instruction = input.value.trim(); if (!instruction) return;
-      sendBtn.disabled = true; sendBtn.classList.add('loading');      ws.send(JSON.stringify({ type: 'edit-request', selector: getSelector(selectedEl), tagName: selectedEl.tagName.toLowerCase(), className: selectedEl.className || '', textContent: selectedEl.textContent?.trim().slice(0, 100) || '', instruction, sourceInfo: extractSourceInfo(selectedEl) }));
+      const tagName = selectedEl.tagName.toLowerCase();
+      lastEdit = { tagName, instruction };
+      activeSendBtn = sendBtn;
+      sendBtn.disabled = true; sendBtn.classList.add('loading');
+      ws.send(JSON.stringify({ type: 'edit-request', selector: getSelector(selectedEl), tagName, className: selectedEl.className || '', textContent: selectedEl.textContent?.trim().slice(0, 100) || '', instruction, sourceInfo: extractSourceInfo(selectedEl) }));
       toast('Editing...', 'info');
+      startPolling();
     }
 
     sendBtn.addEventListener('click', sendEdit);

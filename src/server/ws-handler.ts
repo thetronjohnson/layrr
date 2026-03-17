@@ -12,16 +12,37 @@ interface EditRequestMsg {
   sourceInfo?: { file: string; line: number; column?: number };
 }
 
+// Track the latest active WebSocket so edit results go to the current page
+let activeWs: WebSocket | null = null;
+
+// Set up the notifier once — it always sends to the latest WS
+editQueue.setWsNotifier((success, message) => {
+  const payload = JSON.stringify({
+    type: 'edit-result',
+    success,
+    message: message || (success ? 'Edit applied!' : 'Edit failed'),
+  });
+  if (!activeWs) {
+    console.warn('[layrr] No active WebSocket to send edit-result');
+    return;
+  }
+  if (activeWs.readyState !== activeWs.OPEN) {
+    console.warn(`[layrr] WebSocket not OPEN (readyState=${activeWs.readyState}), cannot send edit-result`);
+    return;
+  }
+  try {
+    activeWs.send(payload);
+    console.log(`[layrr] Sent edit-result via WebSocket (success=${success})`);
+  } catch (err) {
+    console.error('[layrr] Failed to send edit-result via WebSocket:', err);
+  }
+});
+
 export function handleWsConnection(ws: WebSocket, projectRoot: string) {
-  // Register notifier so MCP can send results back to the overlay
-  editQueue.setWsNotifier((success, message) => {
-    if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify({
-        type: 'edit-result',
-        success,
-        message: message || (success ? 'Edit applied!' : 'Edit failed'),
-      }));
-    }
+  activeWs = ws;
+
+  ws.on('close', () => {
+    if (activeWs === ws) activeWs = null;
   });
 
   ws.on('message', async (raw: Buffer) => {
@@ -31,7 +52,6 @@ export function handleWsConnection(ws: WebSocket, projectRoot: string) {
       if (msg.type === 'edit-request') {
         const editMsg = msg as EditRequestMsg;
 
-        // Resolve source location
         const sourceLocation = await resolveSource({
           selector: editMsg.selector,
           tagName: editMsg.tagName,
@@ -41,7 +61,6 @@ export function handleWsConnection(ws: WebSocket, projectRoot: string) {
           projectRoot,
         });
 
-        // Push to queue — the MCP get_edit_request tool is waiting for this
         editQueue.push({
           instruction: editMsg.instruction,
           tagName: editMsg.tagName,
@@ -51,6 +70,8 @@ export function handleWsConnection(ws: WebSocket, projectRoot: string) {
           sourceLocation,
         });
       }
-    } catch {}
+    } catch (err) {
+      console.error('[layrr] Error handling WS message:', err);
+    }
   });
 }
