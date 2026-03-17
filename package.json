@@ -21,7 +21,7 @@
     "claude-code"
   ],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "packageManager": "pnpm@10.28.2",
   "dependencies": {
     "@anthropic-ai/claude-code": "^2.1.76",

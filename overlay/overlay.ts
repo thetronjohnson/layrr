@@ -19,7 +19,7 @@
   function saveState() {
     try {
       const bar = document.getElementById(`${L}-bar`);
-      const state: any = { mode, editCount, editHistory };
+      const state: any = { mode, editCount, editHistory, lastEditTimestamp };
       if (bar) {
         const s = bar.style;
         if (s.left && s.top) {
@@ -418,7 +418,7 @@
   let panelEl: HTMLElement | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let spinnerTimeout: ReturnType<typeof setTimeout> | null = null;
-  let lastEditTimestamp = 0;
+  let lastEditTimestamp: number = saved.lastEditTimestamp || 0;
 
   function stopPolling() {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
@@ -467,6 +467,7 @@
       if (hlEl) { hlEl.style.display = 'none'; hlEl.classList.remove('selected'); }
       if (labelEl) { labelEl.style.display = 'none'; }
       if (panelEl) { panelEl.style.display = 'none'; }
+      saveState();
       toast('Done!', 'success');
       setTimeout(() => location.reload(), 2000);
     } else {
@@ -552,6 +553,14 @@
     const { dim, hl, label, panel, bar } = createElements();
     hlEl = hl; labelEl = label; panelEl = panel;
     connectWs(bar);
+
+    // Check for edit results missed during HMR reload
+    fetch('/__layrr__/edit-status').then(r => r.json()).then(data => {
+      if (data.success !== null && data.timestamp > lastEditTimestamp) {
+        lastEditTimestamp = data.timestamp;
+        onEditResult(data);
+      }
+    }).catch(() => {});
 
     const input = panel.querySelector(`.${L}-in`) as HTMLTextAreaElement;
     const sendBtn = panel.querySelector(`.${L}-sb`) as HTMLButtonElement;
