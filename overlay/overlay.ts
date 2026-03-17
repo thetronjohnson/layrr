@@ -238,7 +238,7 @@
       /* History panel */
       #${L}-history{
         position:absolute;bottom:calc(100% + 10px);right:0;
-        width:300px;max-height:280px;overflow-y:auto;
+        width:340px;height:350px;overflow-y:auto;
         background:${C.panel};
         backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
         border:1px solid ${C.panelBorder};border-radius:12px;
@@ -248,10 +248,15 @@
       }
       #${L}-history.open{display:block}
       .${L}-hh{
+        display:flex;align-items:center;justify-content:space-between;
         padding:10px 14px 6px;font-size:10px;font-weight:700;
         text-transform:uppercase;letter-spacing:.06em;color:${C.textDim};
         border-bottom:1px solid ${C.border};
       }
+      .${L}-hh-nav{display:flex;align-items:center;gap:2px}
+      .${L}-hh-nav button{background:none;border:none;color:${C.textDim};font-size:13px;cursor:pointer;padding:2px 5px;border-radius:4px;line-height:1;transition:color .12s,background .12s;font-family:'lucide'!important;font-style:normal;-webkit-font-smoothing:antialiased}
+      .${L}-hh-nav button:hover:not(:disabled){color:${C.textMuted};background:${C.surface}}
+      .${L}-hh-nav button:disabled{opacity:.25;cursor:default}
       .${L}-he{
         padding:10px 14px;border-bottom:1px solid ${C.border};
         font-size:12px;color:${C.text};
@@ -260,11 +265,6 @@
       .${L}-he-el{font-family:'SF Mono',Menlo,monospace;font-size:10px;color:${C.textDim};margin-bottom:2px}
       .${L}-he-inst{color:${C.textMuted};font-size:11px}
       .${L}-he-empty{padding:20px 14px;text-align:center;color:${C.textDim};font-size:12px}
-      .${L}-hp{display:flex;align-items:center;justify-content:space-between;padding:6px 14px;border-top:1px solid ${C.border}}
-      .${L}-hp button{background:none;border:none;color:${C.textDim};font-size:11px;cursor:pointer;padding:2px 6px;border-radius:4px;font-family:inherit;transition:color .12s,background .12s}
-      .${L}-hp button:hover:not(:disabled){color:${C.textMuted};background:${C.surface}}
-      .${L}-hp button:disabled{opacity:.3;cursor:default}
-      .${L}-hp span{font-size:10px;color:${C.textDim}}
     `;
     document.head.appendChild(s);
   }
@@ -498,7 +498,7 @@
     const container = document.getElementById(`${L}-history`);
     if (!container) return;
     if (editHistory.length === 0) {
-      container.innerHTML = `<div class="${L}-hh">Edit history</div><div class="${L}-he-empty">No edits yet</div>`;
+      container.innerHTML = `<div class="${L}-hh"><span>Edit history</span></div><div class="${L}-he-empty">No edits yet</div>`;
       return;
     }
     const PAGE_SIZE = 5;
@@ -508,20 +508,19 @@
     const start = historyPage * PAGE_SIZE;
     const page = reversed.slice(start, start + PAGE_SIZE);
 
-    let html = `<div class="${L}-hh">Edit history (${editHistory.length})</div>`;
+    const nav = totalPages > 1
+      ? `<div class="${L}-hh-nav">` +
+        `<button class="${L}-hh-prev"${historyPage === 0 ? ' disabled' : ''}><i class="icon-chevron-left"></i></button>` +
+        `<button class="${L}-hh-next"${historyPage >= totalPages - 1 ? ' disabled' : ''}><i class="icon-chevron-right"></i></button>` +
+        `</div>` : '';
+
+    let html = `<div class="${L}-hh"><span>Edit history (${editHistory.length})</span>${nav}</div>`;
     html += page.map(e =>
       `<div class="${L}-he"><div class="${L}-he-el">&lt;${e.tagName}&gt;</div><div class="${L}-he-inst">${e.instruction}</div></div>`
     ).join('');
-    if (totalPages > 1) {
-      html += `<div class="${L}-hp">` +
-        `<button class="${L}-hp-prev"${historyPage === 0 ? ' disabled' : ''}>&larr; Newer</button>` +
-        `<span>${historyPage + 1} / ${totalPages}</span>` +
-        `<button class="${L}-hp-next"${historyPage >= totalPages - 1 ? ' disabled' : ''}>Older &rarr;</button>` +
-        `</div>`;
-    }
     container.innerHTML = html;
-    container.querySelector(`.${L}-hp-prev`)?.addEventListener('click', () => { historyPage--; renderHistory(); });
-    container.querySelector(`.${L}-hp-next`)?.addEventListener('click', () => { historyPage++; renderHistory(); });
+    container.querySelector(`.${L}-hh-prev`)?.addEventListener('click', () => { historyPage--; renderHistory(); });
+    container.querySelector(`.${L}-hh-next`)?.addEventListener('click', () => { historyPage++; renderHistory(); });
   }
 
   function setMode(m: Mode, hl: HTMLElement, label: HTMLElement, panel: HTMLElement, bar: HTMLElement, dim: HTMLElement, silent = false) {
@@ -542,6 +541,9 @@
       label.style.display = 'none'; panel.style.display = 'none';
       if (!silent) toast('Click any element', 'info');
     }
+    const hp = document.getElementById(`${L}-history`);
+    if (hp) hp.classList.remove('open');
+    bar.querySelector(`.${L}-bhi`)?.classList.remove('open');
     saveState();
   }
 
