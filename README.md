@@ -122,7 +122,17 @@ Options:
 
 - **Node.js** 18+
 - **A running dev server** (Astro, Next.js, Vite, etc.)
-- **Claude Code** authenticated (`claude login`)
+- **Claude Code** authenticated (supports Bedrock, SSO, or API key - see `claude login --help`)
+
+### Authentication Methods
+
+layrr works with any Claude Code authentication method:
+
+- **Bedrock** (recommended for AWS users): `claude login --bedrock`
+- **SSO**: `claude login --sso`
+- **API key**: `claude login`
+
+layrr automatically uses whichever method you've configured.
 
 ### Install via npm
 

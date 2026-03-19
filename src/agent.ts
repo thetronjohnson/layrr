@@ -20,7 +20,10 @@ export function checkClaude(): { ok: boolean; error?: string } {
     }
 
     const stderr = result.stderr?.toString() || '';
-    if (stderr.includes('auth') || stderr.includes('login') || stderr.includes('API key')) {
+    const stderrLower = stderr.toLowerCase();
+    if (stderrLower.includes('auth') || stderrLower.includes('login') ||
+        stderrLower.includes('api key') || stderrLower.includes('credentials') ||
+        stderrLower.includes('bedrock') || stderrLower.includes('not configured')) {
       return { ok: false, error: 'not-authenticated' };
     }
 
@@ -108,8 +111,11 @@ Read the file, make the minimal edit needed, and save it. Only change what was r
           });
         } else {
           const err = stderr.trim();
-          if (err.includes('auth') || err.includes('login') || err.includes('API key')) {
-            resolve({ success: false, message: 'Not authenticated. Run: claude login' });
+          const errLower = err.toLowerCase();
+          if (errLower.includes('auth') || errLower.includes('login') ||
+              errLower.includes('api key') || errLower.includes('credentials') ||
+              errLower.includes('bedrock') || errLower.includes('not configured')) {
+            resolve({ success: false, message: 'Claude Code authentication failed. Run: claude login' });
           } else {
             resolve({ success: false, message: err.slice(-200) || `Claude exited with code ${code}` });
           }
