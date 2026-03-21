@@ -61,13 +61,15 @@ const check = checkClaude();
 if (!check.ok) {
   if (check.error === 'not-authenticated') {
     console.error(`
-  Claude Code is installed but not authenticated.
+  Claude Code is not authenticated.
 
-  Run this first:
+  Authenticate using one of these methods:
 
-    claude login
+    • Bedrock:  claude login --bedrock
+    • SSO:      claude login --sso
+    • API key:  claude login
 
-  Then try again.
+  Then try layrr again.
 `);
   } else {
     console.error(`
