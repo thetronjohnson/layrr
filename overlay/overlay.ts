@@ -120,6 +120,7 @@
       .${L}-panel{
         display:none;width:320px;
         border-top:1px solid ${C.panelBorder};
+        border-radius:14px 14px 0 0;
         animation:${L}-in .2s cubic-bezier(.2,.8,.2,1);
       }
       .${L}-panel.open{display:block}
@@ -136,6 +137,8 @@
       .${L}-px:active{transform:scale(.95)}
 
       .${L}-ei{margin:6px 10px;padding:6px 8px;background:${C.surface};border:1px solid ${C.border};border-radius:8px}
+      .${L}-eh{font-size:11px;color:${C.textDim};text-align:center;padding:8px 4px}
+      .${L}-eh kbd{background:${C.bg};border:1px solid ${C.border};border-radius:3px;padding:1px 4px;font-size:10px;font-family:'Geist Mono',monospace}
       .${L}-et{font-family:'Geist Mono',monospace;font-size:11px;color:${C.hl}}
       .${L}-ex{font-size:10px;color:${C.textDim};margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .${L}-ep{font-size:9px;color:${C.accent};margin-top:2px;font-family:'Geist Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -268,28 +271,36 @@
       /* History panel — inline in bar */
       #${L}-history{
         display:none;width:320px;max-height:300px;overflow-y:auto;
-        border-bottom:1px solid ${C.panelBorder};
+        border-top:1px solid ${C.panelBorder};
+        border-radius:14px 14px 0 0;
         animation:${L}-in .2s cubic-bezier(.2,.8,.2,1);
       }
       #${L}-history.open{display:block}
       .${L}-hh{
         display:flex;align-items:center;justify-content:space-between;
-        padding:10px 14px 6px;font-size:10px;font-weight:700;
-        text-transform:uppercase;letter-spacing:.06em;color:${C.textDim};
-        border-bottom:1px solid ${C.border};
+        padding:8px 10px 0;font-size:10px;font-weight:700;
+        text-transform:uppercase;letter-spacing:.06em;color:${C.textMuted};
       }
+      .${L}-hh-close{
+        width:22px;height:22px;border-radius:6px;border:none;background:transparent;
+        color:${C.textDim};cursor:pointer;display:flex;align-items:center;justify-content:center;
+        font-size:13px;transition:all .12s ease;margin-left:auto;
+      }
+      .${L}-hh-close:hover{background:${C.surface};color:${C.textMuted}}
+      .${L}-hh-close:active{transform:scale(.95)}
       .${L}-hh-nav{display:flex;align-items:center;gap:2px}
       .${L}-hh-nav button{background:none;border:none;color:${C.textDim};font-size:13px;cursor:pointer;padding:2px 5px;border-radius:4px;line-height:1;transition:color .12s,background .12s;font-family:'lucide'!important;font-style:normal;-webkit-font-smoothing:antialiased}
       .${L}-hh-nav button:hover:not(:disabled){color:${C.textMuted};background:${C.surface}}
       .${L}-hh-nav button:disabled{opacity:.25;cursor:default}
+      .${L}-he-list{margin:6px 10px 10px;background:${C.surface};border:1px solid ${C.border};border-radius:8px;overflow:hidden}
       .${L}-he{
-        padding:10px 14px;border-bottom:1px solid ${C.border};
+        padding:8px 10px;border-bottom:1px solid ${C.border};
         font-size:12px;color:${C.text};
       }
       .${L}-he:last-child{border-bottom:none}
       .${L}-he-el{font-family:'Geist Mono',monospace;font-size:10px;color:${C.textDim};margin-bottom:2px}
       .${L}-he-inst{color:${C.textMuted};font-size:11px}
-      .${L}-he-empty{padding:20px 14px;text-align:center;color:${C.textDim};font-size:12px}
+      .${L}-he-empty{padding:20px 14px;text-align:center;color:${C.textDim};font-size:12px;margin:6px 10px 10px}
     `;
     document.head.appendChild(s);
   }
@@ -321,7 +332,7 @@
     bar.innerHTML = `
       <div class="${L}-panel">
         <div class="${L}-ph">
-          <div class="${L}-pb">layrr</div>
+          <div class="${L}-pb">Edit</div>
           <button class="${L}-px"><i class="icon-x"></i></button>
         </div>
         <div class="${L}-ei">
@@ -338,7 +349,7 @@
         <div class="${L}-hn"><span><kbd>Enter</kbd> send</span><span><kbd>Esc</kbd> close</span></div>
       </div>
       <div id="${L}-history">
-        <div class="${L}-hh">Edit history</div>
+        <div class="${L}-hh">History</div>
         <div class="${L}-he-empty">No edits yet</div>
       </div>
       <div class="${L}-toolbar">
@@ -346,7 +357,7 @@
         <div class="${L}-bs"></div>
         <button class="${L}-bb ${L}-bbr active" data-tip="Browse"><i class="icon-mouse-pointer"></i></button>
         <button class="${L}-bb ${L}-bbe" data-tip="Edit"><i class="icon-pencil"></i></button>
-        <button class="${L}-bb ${L}-bundo" data-tip="Undo" style="display:none"><i class="icon-undo-2"></i></button>
+        <button class="${L}-bb ${L}-bundo" data-tip="Undo" disabled><i class="icon-undo-2"></i></button>
         <button class="${L}-bb ${L}-bhi" data-tip="History"><i class="icon-clock"></i></button>
       </div>
     `;
@@ -468,13 +479,33 @@
     selectedEls = [];
     clearMultiHighlights();
     hl.style.display = 'none'; hl.classList.remove('selected');
-    label.style.display = 'none'; hidePanel(panel);
+    label.style.display = 'none';
+    if (mode === 'edit') {
+      updatePanelForSelection(panel);
+    } else {
+      hidePanel(panel);
+    }
   }
 
   function updatePanelForSelection(panel: HTMLElement) {
+    const ia = panel.querySelector(`.${L}-ia`) as HTMLElement;
+    const hn = panel.querySelector(`.${L}-hn`) as HTMLElement;
     const elInfo = panel.querySelector(`.${L}-ei`) as HTMLElement;
+
+    // No selection — show hint
+    if (!selectedEl && selectedEls.length === 0) {
+      elInfo.innerHTML = `<div class="${L}-eh">Click to select an element or <kbd>Shift+click</kbd> to select multiple</div>`;
+      if (ia) ia.style.display = 'none';
+      if (hn) hn.style.display = 'none';
+      return;
+    }
+
+    // Has selection — show input area
+    if (ia) ia.style.display = '';
+    if (hn) hn.style.display = '';
+
     if (selectedEls.length <= 1) {
-      // Single select — use original layout
+      // Single select
       const el = selectedEls[0] || selectedEl;
       if (!el) return;
       elInfo.innerHTML = `
@@ -576,8 +607,8 @@
       toast('Done!', 'success');
       // Show undo in toolbar
       if (msg.canUndo) {
-        const ub = document.querySelector(`.${L}-bundo`) as HTMLElement;
-        if (ub) { ub.style.display = ''; (ub as HTMLButtonElement).disabled = false; }
+        const ub = document.querySelector(`.${L}-bundo`) as HTMLButtonElement;
+        if (ub) { ub.disabled = false; }
       }
       setTimeout(() => location.reload(), 2500);
     } else {
@@ -591,7 +622,7 @@
     if (msg.success) {
       if (ub) {
         if (msg.canUndo) { ub.disabled = false; }
-        else { ub.style.display = 'none'; }
+        else { ub.disabled = true; }
       }
       toast('Reverted!', 'success');
       setTimeout(() => location.reload(), 1500);
@@ -625,7 +656,8 @@
     const container = document.getElementById(`${L}-history`);
     if (!container) return;
     if (editHistory.length === 0) {
-      container.innerHTML = `<div class="${L}-hh"><span>Edit history</span></div><div class="${L}-he-empty">No edits yet</div>`;
+      container.innerHTML = `<div class="${L}-hh"><span>History</span><button class="${L}-hh-close"><i class="icon-x"></i></button></div><div class="${L}-he-empty">No edits yet</div>`;
+      container.querySelector(`.${L}-hh-close`)?.addEventListener('click', () => closeHistory());
       return;
     }
     const PAGE_SIZE = 5;
@@ -641,13 +673,26 @@
         `<button class="${L}-hh-next"${historyPage >= totalPages - 1 ? ' disabled' : ''}><i class="icon-chevron-right"></i></button>` +
         `</div>` : '';
 
-    let html = `<div class="${L}-hh"><span>Edit history (${editHistory.length})</span>${nav}</div>`;
+    let html = `<div class="${L}-hh"><span>History (${editHistory.length})</span>${nav}<button class="${L}-hh-close"><i class="icon-x"></i></button></div>`;
+    html += `<div class="${L}-he-list">`;
     html += page.map(e =>
       `<div class="${L}-he"><div class="${L}-he-el">&lt;${e.tagName}&gt;</div><div class="${L}-he-inst">${e.instruction}</div></div>`
-    ).join('');
+    ).join('') + '</div>';
     container.innerHTML = html;
     container.querySelector(`.${L}-hh-prev`)?.addEventListener('click', () => { historyPage--; renderHistory(); });
     container.querySelector(`.${L}-hh-next`)?.addEventListener('click', () => { historyPage++; renderHistory(); });
+    container.querySelector(`.${L}-hh-close`)?.addEventListener('click', () => closeHistory());
+  }
+
+  function closeHistory() {
+    const histPanel = document.getElementById(`${L}-history`);
+    const bar = document.getElementById(`${L}-bar`);
+    const histBtn = bar?.querySelector(`.${L}-bhi`) as HTMLElement;
+    const browseBtn = bar?.querySelector(`.${L}-bbr`) as HTMLElement;
+    if (histPanel) histPanel.classList.remove('open');
+    if (histBtn) histBtn.classList.remove('open');
+    if (bar) bar.classList.remove('expanded');
+    if (browseBtn) browseBtn.classList.add('active');
   }
 
   function setMode(m: Mode, hl: HTMLElement, label: HTMLElement, panel: HTMLElement, bar: HTMLElement, dim: HTMLElement, silent = false) {
@@ -667,13 +712,14 @@
       selectedEl = null; selectedEls = []; hoveredEl = null;
       clearMultiHighlights();
       hl.style.display = 'none'; hl.classList.remove('selected');
-      label.style.display = 'none'; hidePanel(panel);
-      if (!silent) toast('Click any element (Shift+click to multi-select)', 'info');
+      label.style.display = 'none';
+      updatePanelForSelection(panel);
+      showPanel(panel);
     }
     const hp = document.getElementById(`${L}-history`);
     if (hp) { hp.classList.remove('open'); }
     bar.querySelector(`.${L}-bhi`)?.classList.remove('open');
-    bar.classList.remove('expanded');
+    if (!panel.classList.contains('open')) bar.classList.remove('expanded');
     saveState();
   }
 
@@ -686,8 +732,8 @@
     // Check for edit results missed during HMR reload + restore undo state
     fetch('/__layrr__/edit-status').then(r => r.json()).then(data => {
       if (data.canUndo) {
-        const ub = bar.querySelector(`.${L}-bundo`) as HTMLElement;
-        if (ub) ub.style.display = '';
+        const ub = bar.querySelector(`.${L}-bundo`) as HTMLButtonElement;
+        if (ub) ub.disabled = false;
       }
       if (data.success !== null && data.timestamp > lastEditTimestamp) {
         lastEditTimestamp = data.timestamp;
@@ -714,7 +760,9 @@
     histBtn.addEventListener('click', () => {
       // Close edit panel if open
       if (panel.classList.contains('open')) {
-        clearSelection(hl, label, panel);
+        selectedEl = null; selectedEls = []; clearMultiHighlights();
+        hl.style.display = 'none'; hl.classList.remove('selected');
+        label.style.display = 'none'; hidePanel(panel);
         hoveredEl = null;
       }
       const isOpen = histPanel.classList.toggle('open');
@@ -768,7 +816,7 @@
     document.addEventListener('mouseup', () => { if (barDragging) { barDragging = false; bar.classList.remove('dragging'); saveState(); } });
 
     closeBtn.addEventListener('click', () => {
-      clearSelection(hl, label, panel);
+      setMode('browse', hl, label, panel, bar, dim);
       hoveredEl = null;
     });
 
@@ -855,10 +903,7 @@
       if ((e.metaKey || e.altKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setMode(mode === 'browse' ? 'edit' : 'browse', hl, label, panel, bar, dim); return; }
       if (e.key === 'Escape') {
         if (histPanel.classList.contains('open')) {
-          histPanel.classList.remove('open');
-          histBtn.classList.remove('open');
-          bar.classList.remove('expanded');
-          browseBtn.classList.add('active');
+          closeHistory();
         } else if (selectedEl) { clearSelection(hl, label, panel); hoveredEl = null; }
         else if (mode === 'edit') setMode('browse', hl, label, panel, bar, dim);
       }
