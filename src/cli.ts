@@ -5,7 +5,8 @@ import { execSync } from 'child_process';
 import open from 'open';
 import { startProxy } from './server/proxy.js';
 import { editQueue } from './server/edit-queue.js';
-import { ClaudeAgent, checkClaude } from './agent.js';
+import { createAgent, checkAgent, getAgentDisplayName, getInstallHint, getAuthHint, isValidAgent, AGENT_LIST } from './agents/index.js';
+import { resolveAgent, promptAgentSelection } from './config.js';
 
 const args = process.argv.slice(2);
 
@@ -13,6 +14,7 @@ let targetPort: number | null = null;
 let proxyPort = 4567;
 let projectRoot = process.cwd();
 let noOpen = false;
+let agentOverride: string | undefined;
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -21,6 +23,9 @@ for (let i = 0; i < args.length; i++) {
     i++;
   } else if (arg === '--proxy-port' && args[i + 1]) {
     proxyPort = parseInt(args[i + 1], 10);
+    i++;
+  } else if (arg === '--agent' && args[i + 1]) {
+    agentOverride = args[i + 1];
     i++;
   } else if (arg === '--no-open') {
     noOpen = true;
@@ -34,6 +39,7 @@ for (let i = 0; i < args.length; i++) {
   Options:
     -p, --port <number>        Dev server port (required)
     --proxy-port <number>      Layrr proxy port (default: 4567)
+    --agent <name>             AI agent to use (${AGENT_LIST.map(a => a.name).join(', ')})
     --no-open                  Don't open browser automatically
     -h, --help                 Show this help
 
@@ -55,40 +61,41 @@ if (!targetPort) {
 
 projectRoot = resolve(projectRoot);
 
-// ---- Preflight: check Claude Code ----
-console.log('\n  Checking Claude Code...');
-const check = checkClaude();
+// ---- Validate --agent flag if provided ----
+if (agentOverride && !isValidAgent(agentOverride)) {
+  console.error(`  Error: Unknown agent "${agentOverride}"\n`);
+  console.error(`  Available agents: ${AGENT_LIST.map(a => `${a.name} (${a.displayName})`).join(', ')}`);
+  process.exit(1);
+}
+
+// ---- Resolve agent ----
+let agentName = resolveAgent(agentOverride);
+
+if (!agentName) {
+  agentName = await promptAgentSelection();
+}
+
+const displayName = getAgentDisplayName(agentName);
+
+// ---- Preflight: check agent ----
+console.log(`\n  Checking ${displayName}...`);
+const check = checkAgent(agentName);
 
 if (!check.ok) {
   if (check.error === 'not-authenticated') {
-    console.error(`
-  Claude Code is not authenticated.
-
-  Authenticate using one of these methods:
-
-    • Bedrock:  claude login --bedrock
-    • SSO:      claude login --sso
-    • API key:  claude login
-
-  Then try layrr again.
-`);
+    console.error(`\n  ${displayName} is not authenticated.\n`);
+    console.error(getAuthHint(agentName));
+    console.error('\n  Then try layrr again.\n');
+  } else if (check.error === 'not-found') {
+    console.error(`\n  ${displayName} not found.\n`);
+    console.error(`  Install it: ${getInstallHint(agentName)}\n`);
   } else {
-    console.error(`
-  Could not start Claude Code: ${check.error}
-
-  Make sure Claude Code is working:
-
-    claude --version
-
-  If not installed, layrr bundles it. Try:
-
-    claude login
-`);
+    console.error(`\n  Could not start ${displayName}: ${check.error}\n`);
   }
   process.exit(1);
 }
 
-console.log('  ✓ Claude Code ready');
+console.log(`  ✓ ${displayName} ready`);
 
 // ---- Start ----
 console.log(`
@@ -96,10 +103,11 @@ console.log(`
 
   Dev server:  http://localhost:${targetPort}
   Proxy:       http://localhost:${proxyPort}
+  Agent:       ${displayName}
   Project:     ${projectRoot}
 `);
 
-const agent = new ClaudeAgent({ projectRoot });
+const agent = createAgent(agentName, { projectRoot });
 editQueue.projectRoot = projectRoot;
 
 await startProxy(targetPort, proxyPort, projectRoot);

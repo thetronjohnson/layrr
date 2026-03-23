@@ -1,23 +1,22 @@
-import { spawnSync, spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import type { PendingEditRequest } from './server/edit-queue.js';
+import type { PendingEditRequest } from '../server/edit-queue.js';
+import type { Agent, AgentOptions, AgentCheckResult } from './base.js';
+import { buildPrompt } from './prompt.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const claudeBin = join(__dirname, '..', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+const claudeBin = join(__dirname, '..', '..', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
 
-export function checkClaude(): { ok: boolean; error?: string } {
+export function checkClaude(): AgentCheckResult {
   try {
     const result = spawnSync('node', [claudeBin, '--version'], {
       timeout: 10000,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    if (result.status === 0) {
-      const version = result.stdout?.toString().trim();
-      return { ok: true };
-    }
+    if (result.status === 0) return { ok: true };
 
     const stderr = result.stderr?.toString() || '';
     const stderrLower = stderr.toLowerCase();
@@ -33,11 +32,9 @@ export function checkClaude(): { ok: boolean; error?: string } {
   }
 }
 
-interface AgentOptions {
-  projectRoot: string;
-}
-
-export class ClaudeAgent {
+export class ClaudeAgent implements Agent {
+  readonly name = 'claude' as const;
+  readonly displayName = 'Claude Code';
   private sessionId: string;
   private projectRoot: string;
 
@@ -47,69 +44,7 @@ export class ClaudeAgent {
   }
 
   async applyEdit(request: PendingEditRequest): Promise<{ success: boolean; message: string }> {
-    const { instruction, tagName, className, textContent, selector, sourceLocation, elements } = request;
-
-    let prompt: string;
-
-    if (elements && elements.length > 1) {
-      // Multi-element edit
-      prompt = `The user is visually editing their web app. They selected ${elements.length} UI elements and want to make a change to all of them.
-
-**Selected elements:**`;
-
-      for (let i = 0; i < elements.length; i++) {
-        const el = elements[i];
-        prompt += `
-
-Element ${i + 1}:
-- Tag: <${el.tagName}>
-- Class: "${el.className}"
-- Text: "${el.textContent}"
-- Selector: ${el.selector}`;
-
-        if (el.sourceLocation) {
-          prompt += `
-- File: ${el.sourceLocation.filePath}:${el.sourceLocation.line}
-- Code context:
-\`\`\`
-${el.sourceLocation.context}
-\`\`\``;
-        }
-      }
-
-      prompt += `
-
-**User instruction (apply to ALL selected elements):** "${instruction}"
-
-Read each file, make the minimal edits needed, and save. Apply the same change to all selected elements. Only change what was requested.`;
-    } else {
-      // Single element edit
-      prompt = `The user is visually editing their web app. They selected a UI element and want to make a change.
-
-**Selected element:**
-- Tag: <${tagName}>
-- Class: "${className}"
-- Text: "${textContent}"
-- Selector: ${selector}`;
-
-      if (sourceLocation) {
-        prompt += `
-
-**Source location found:**
-- File: ${sourceLocation.filePath}
-- Line: ${sourceLocation.line}
-- Code context:
-\`\`\`
-${sourceLocation.context}
-\`\`\``;
-      }
-
-      prompt += `
-
-**User instruction:** "${instruction}"
-
-Read the file, make the minimal edit needed, and save it. Only change what was requested.`;
-    }
+    const prompt = buildPrompt(request);
 
     return new Promise((resolve) => {
       const args = [
