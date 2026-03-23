@@ -6,7 +6,7 @@
     <strong>Point, click, and edit any web app with AI</strong>
   </p>
   <p>
-    <strong>A CLI that injects a visual overlay into your running dev server. Select any element, describe what you want to change in plain English, and Claude applies the edit to your source code.</strong>
+    <strong>A CLI that injects a visual overlay into your running dev server. Select any element, describe what you want to change in plain English, and AI applies the edit to your source code.</strong>
   </p>
 
   <p>
@@ -22,9 +22,9 @@
 
 ## Overview
 
-**layrr** turns your browser into a visual code editor powered by AI. Instead of hunting through source files, you click on any element in your running app, describe the change you want, and Claude Code edits the actual source code for you — with hot reload.
+**layrr** turns your browser into a visual code editor powered by AI. Instead of hunting through source files, you click on any element in your running app, describe the change you want, and your AI agent edits the actual source code for you — with hot reload.
 
-Think of layrr as a bridge between your browser and your codebase — making frontend edits as easy as pointing and talking.
+Think of layrr as a bridge between your browser and your codebase — making frontend edits as easy as pointing and talking. Works with **Claude Code** or **OpenAI Codex CLI**.
 
 ## Table of Contents
 
@@ -32,6 +32,8 @@ Think of layrr as a bridge between your browser and your codebase — making fro
 - [Features](#features)
   - [Visual Element Selection](#-visual-element-selection)
   - [AI-Powered Edits](#-ai-powered-edits)
+  - [Multi-Agent Support](#-multi-agent-support)
+  - [Undo](#-undo)
   - [Framework Support](#-framework-support)
   - [Keyboard Shortcuts](#-keyboard-shortcuts)
 - [Usage](#usage)
@@ -47,14 +49,25 @@ Think of layrr as a bridge between your browser and your codebase — making fro
 ### ✨ **Visual Element Selection**
 - **Overlay Toolbar**: A non-intrusive toolbar injected into your running app
 - **Click to Select**: Switch to Edit mode and click any element on the page
+- **Multi-Select**: Shift-click to select multiple elements and apply a single instruction to all of them
 - **Element Highlighting**: Visual feedback shows exactly which element you're targeting
 - **Browse & Edit Modes**: Seamlessly toggle between browsing your app and editing elements
 
 ### 🤖 **AI-Powered Edits**
 - **Natural Language**: Describe changes in plain English — "make this red", "add padding", "change the text"
-- **Source Code Editing**: Claude Code reads the actual source file and makes minimal, precise edits
+- **Source Code Editing**: Your AI agent reads the actual source file and makes minimal, precise edits
 - **Hot Reload**: Changes appear instantly via your dev server's HMR
 - **Edit Queue**: Multiple edits are queued and processed sequentially
+
+### 🔀 **Multi-Agent Support**
+- **Claude Code**: Anthropic's coding agent (bundled via `@anthropic-ai/claude-code`)
+- **Codex CLI**: OpenAI's coding agent (`npm install -g @openai/codex`)
+- **Interactive Picker**: On first run, layrr prompts you to choose an agent and saves your preference to `~/.layrr/config.json`
+- **CLI Override**: Switch agents anytime with `--agent claude` or `--agent codex`
+
+### ↩ **Undo**
+- **One-Click Revert**: Each AI edit is auto-committed with a `[layrr]` prefix — undo rolls back the last commit instantly
+- **Safe**: Only reverts layrr commits, never your own work
 
 ### 🔌 **Framework Support**
 - **React**: Source file resolution via fiber metadata
@@ -68,6 +81,7 @@ Think of layrr as a bridge between your browser and your codebase — making fro
 | Shortcut | Action |
 |---|---|
 | `Alt+K` / `Cmd+K` | Toggle between Browse and Edit mode |
+| `Shift+Click` | Add/remove element from multi-selection |
 | `Enter` | Send edit instruction |
 | `Esc` | Deselect element or exit Edit mode |
 
@@ -92,7 +106,7 @@ Browser (overlay)          layrr proxy (localhost:4567)          Dev server (loc
      │                              │                                    │
      │──── select element ─────────>│                                    │
      │──── "make this red" ────────>│                                    │
-     │                              │──── Claude Code edits file ──────> │
+     │                              │──── AI agent edits file ─────────> │
      │                              │                                    │── HMR reload
      │<──── Done! ─────────────────│                                    │
 ```
@@ -100,7 +114,7 @@ Browser (overlay)          layrr proxy (localhost:4567)          Dev server (loc
 1. **Proxy & Inject**: layrr proxies your dev server and injects a small overlay
 2. **Select**: You switch to Edit mode and click any element on the page
 3. **Describe**: You describe the change in natural language
-4. **Edit**: Claude Code reads the source file, makes the minimal edit, and saves it
+4. **Edit**: Your AI agent reads the source file, makes the minimal edit, and saves it
 5. **Reload**: Your dev server hot-reloads the page
 
 ### CLI Options
@@ -112,6 +126,7 @@ Usage:
 Options:
   -p, --port <number>        Dev server port (required)
   --proxy-port <number>      Layrr proxy port (default: 4567)
+  --agent <name>             AI agent to use (claude, codex)
   --no-open                  Don't open browser automatically
   -h, --help                 Show this help
 ```
@@ -122,17 +137,26 @@ Options:
 
 - **Node.js** 18+
 - **A running dev server** (Astro, Next.js, Vite, etc.)
-- **Claude Code** authenticated (supports Bedrock, SSO, or API key - see `claude login --help`)
+- **One of the supported AI agents** (see below)
 
-### Authentication Methods
+### Agent Setup
 
-layrr works with any Claude Code authentication method:
+#### Claude Code (bundled)
+
+Claude Code is included as a dependency. Just authenticate:
 
 - **Bedrock** (recommended for AWS users): `claude login --bedrock`
 - **SSO**: `claude login --sso`
 - **API key**: `claude login`
 
-layrr automatically uses whichever method you've configured.
+#### Codex CLI
+
+Install globally and set your API key:
+
+```bash
+npm install -g @openai/codex
+export OPENAI_API_KEY=<your-key>
+```
 
 ### Install via npm
 
@@ -153,7 +177,7 @@ npx layrr --port 3000
 - **Runtime**: Node.js + TypeScript
 - **Proxy Server**: Custom HTTP proxy with WebSocket support
 - **Overlay**: Vanilla TypeScript injected into the browser
-- **AI Agent**: Claude Code SDK (`@anthropic-ai/claude-code`)
+- **AI Agents**: Claude Code (`@anthropic-ai/claude-code`), Codex CLI (`@openai/codex`)
 - **Build Tool**: esbuild (via tsx)
 - **Package Manager**: pnpm
 
@@ -163,11 +187,17 @@ npx layrr --port 3000
 layrr/
 ├── src/                   # Core source code
 │   ├── cli.ts             # CLI entry point
-│   ├── agent.ts           # Claude Code agent integration
+│   ├── config.ts          # Agent config (~/.layrr/config.json)
+│   ├── agents/            # Pluggable AI agent system
+│   │   ├── base.ts        # Agent interface & shared helpers
+│   │   ├── claude.ts      # Claude Code agent
+│   │   ├── codex.ts       # Codex CLI agent
+│   │   ├── prompt.ts      # Shared prompt builder
+│   │   └── index.ts       # Agent registry & factory
 │   ├── server/            # Proxy server & WebSocket handler
 │   │   ├── proxy.ts       # HTTP proxy for dev server
 │   │   ├── ws-handler.ts  # WebSocket communication
-│   │   └── edit-queue.ts  # Sequential edit processing
+│   │   └── edit-queue.ts  # Edit processing & undo
 │   └── editor/            # Source file resolution
 │       └── source-mapper.ts
 ├── overlay/               # Injected browser overlay
