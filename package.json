@@ -1,0 +1,38 @@
+{
+  "name": "layrr",
+  "version": "2026.3.2",
+  "description": "Point, click, and edit any web app with AI",
+  "type": "module",
+  "bin": "./dist/cli.js",
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "tsx scripts/build.ts",
+    "prepublishOnly": "pnpm run build"
+  },
+  "keywords": [
+    "visual-editor",
+    "ai",
+    "web",
+    "cli",
+    "claude-code"
+  ],
+  "author": "",
+  "license": "MIT",
+  "packageManager": "pnpm@10.28.2",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "^2.1.76",
+    "geist": "^1.7.0",
+    "lucide-static": "^0.577.0",
+    "open": "^10.0.0",
+    "ws": "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "@types/ws": "^8.0.0",
+    "esbuild": "^0.27.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}
