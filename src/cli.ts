@@ -141,15 +141,35 @@ async function editLoop() {
       }
     }
 
+    // Snapshot dirty files before agent runs
+    let dirtyBefore = new Set<string>();
+    try {
+      const tracked = execSync('git diff --name-only', { cwd: projectRoot, encoding: 'utf-8' }).trim();
+      const untracked = execSync('git ls-files --others --exclude-standard', { cwd: projectRoot, encoding: 'utf-8' }).trim();
+      for (const f of tracked.split('\n').filter(Boolean)) dirtyBefore.add(f);
+      for (const f of untracked.split('\n').filter(Boolean)) dirtyBefore.add(f);
+    } catch {}
+
     const result = await agent.applyEdit(request);
 
     if (result.success) {
-      // Auto-commit so each edit can be undone individually
+      // Auto-commit only files the agent changed (not pre-existing dirty files)
       try {
-        execSync('git add -A', { cwd: projectRoot, stdio: 'pipe' });
-        const msg = `[layrr] ${request.instruction.slice(0, 72)}`;
-        execSync(`git commit -m ${JSON.stringify(msg)}`, { cwd: projectRoot, stdio: 'pipe' });
-        console.log(`  ✓ Done (committed)`);
+        const trackedAfter = execSync('git diff --name-only', { cwd: projectRoot, encoding: 'utf-8' }).trim();
+        const untrackedAfter = execSync('git ls-files --others --exclude-standard', { cwd: projectRoot, encoding: 'utf-8' }).trim();
+        const toStage = [
+          ...trackedAfter.split('\n').filter(Boolean),
+          ...untrackedAfter.split('\n').filter(Boolean),
+        ].filter(f => !dirtyBefore.has(f));
+
+        if (toStage.length === 0) {
+          console.log(`  ✓ Done (no changes to commit)`);
+        } else {
+          execSync(`git add -- ${toStage.map(f => `"${f}"`).join(' ')}`, { cwd: projectRoot, stdio: 'pipe' });
+          const msg = `[layrr] ${request.instruction.slice(0, 72)}`;
+          execSync(`git commit -m ${JSON.stringify(msg)}`, { cwd: projectRoot, stdio: 'pipe' });
+          console.log(`  ✓ Done (committed)`);
+        }
       } catch {
         console.log(`  ✓ Done (no commit)`);
       }

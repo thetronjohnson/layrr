@@ -84,7 +84,7 @@ class EditQueue {
       return { success: false, message: 'Nothing to undo' };
     }
     try {
-      execSync('git reset --hard HEAD~1', { cwd: this._projectRoot, stdio: 'pipe' });
+      execSync('git revert HEAD --no-edit', { cwd: this._projectRoot, stdio: 'pipe' });
       const result = { success: true, message: 'Reverted last edit' };
       if (this.undoNotifier) {
         this.undoNotifier(result.success, result.message);
