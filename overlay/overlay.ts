@@ -10,7 +10,7 @@
   const { app, loadState, initState, save } = await import('./state');
   const { initSourceMapping, extractSourceInfo, getTag, getBreadcrumb, getSelector, posHL, posLabel } = await import('./source');
   const { fetchAndRenderHistory, closeHistory } = await import('./history');
-  const { panelIn, panelOut, dimIn, dimOut } = await import('./animate');
+  const { barExpand, barCollapse, contentSwap, dimIn, dimOut } = await import('./animate');
 
   await initSourceMapping();
 
@@ -18,22 +18,72 @@
   initState(saved);
 
   // ---- Panel helpers ----
+  let animating = false;
+
   function showPanel(panel: HTMLElement) {
     const bar = document.getElementById(`${L}-bar`);
+    if (!bar) return;
+
     const hp = document.getElementById(`${L}-history`);
-    if (hp) hp.classList.remove('open');
-    bar?.querySelector(`.${L}-bhi`)?.classList.remove('open');
-    panel.classList.add('open');
-    if (bar) bar.classList.add('expanded');
-    panelIn(panel);
+    bar.querySelector(`.${L}-bhi`)?.classList.remove('open');
+
+    // If history is open, swap content (bar stays expanded)
+    if (hp?.classList.contains('open')) {
+      contentSwap(bar, hp, panel);
+      return;
+    }
+
+    // If already expanded with this panel, just ensure it's visible
+    if (bar.classList.contains('expanded') && panel.classList.contains('open')) return;
+
+    // Expand bar with animation
+    animating = true;
+    barExpand(bar, panel);
+    setTimeout(() => { animating = false; }, 600);
+  }
+
+  function showHistory(histPanel: HTMLElement, bar: HTMLElement) {
+    const panel = app.panelEl;
+    bar.querySelector(`.${L}-bhi`)?.classList.add('open');
+
+    // If edit panel is open, swap content (bar stays expanded)
+    if (panel?.classList.contains('open')) {
+      contentSwap(bar, panel, histPanel);
+      return;
+    }
+
+    // Expand bar with animation
+    animating = true;
+    barExpand(bar, histPanel);
+    setTimeout(() => { animating = false; }, 600);
   }
 
   function hidePanel(panel: HTMLElement) {
     const bar = document.getElementById(`${L}-bar`);
-    panel.classList.remove('open');
-    panel.style.cssText = '';
+    if (!bar) return;
     const histOpen = document.getElementById(`${L}-history`)?.classList.contains('open');
-    if (bar && !histOpen) bar.classList.remove('expanded');
+    if (histOpen) {
+      // Just hide the panel, bar stays expanded for history
+      panel.classList.remove('open');
+      panel.style.cssText = '';
+      return;
+    }
+    // Collapse bar with animation
+    animating = true;
+    barCollapse(bar, panel).then(() => { animating = false; });
+  }
+
+  function hideHistory(histPanel: HTMLElement) {
+    const bar = document.getElementById(`${L}-bar`);
+    if (!bar) return;
+    const panelOpen = app.panelEl?.classList.contains('open');
+    if (panelOpen) {
+      histPanel.classList.remove('open');
+      histPanel.style.cssText = '';
+      return;
+    }
+    animating = true;
+    barCollapse(bar, histPanel).then(() => { animating = false; });
   }
 
   // ---- Multi-select helpers ----
@@ -221,6 +271,7 @@
 
   // ---- Mode ----
   function setMode(m: 'browse' | 'edit') {
+    if (animating) return;
     if (m === 'edit' && app.previewingHash) {
       toast('Go back to latest to make edits', 'info');
       return;
@@ -232,9 +283,22 @@
     if (!bar || !dim || !panel) return;
     const br = bar.querySelector(`.${L}-bbr`) as HTMLElement;
     const ed = bar.querySelector(`.${L}-bbe`) as HTMLElement;
+    // Close history if open
+    const hp = document.getElementById(`${L}-history`);
+    if (hp?.classList.contains('open')) {
+      if (m === 'browse') {
+        // Collapsing — full barCollapse is fine
+        hideHistory(hp);
+      }
+      // For 'edit', don't call hideHistory (which triggers barCollapse).
+      // showPanel will detect history is open and use contentSwap instead.
+      bar.querySelector(`.${L}-bhi`)?.classList.remove('open');
+    }
+
     if (m === 'browse') {
       br.classList.add('active'); ed.classList.remove('active');
-      document.body.style.cursor = ''; dim.classList.remove('active');
+      document.body.style.cursor = '';
+      dimOut(dim).then(() => dim.classList.remove('active'));
       app.selectedEl = null; app.selectedEls = []; app.hoveredEl = null;
       clearMultiHighlights();
       if (app.hlEl) { app.hlEl.style.display = 'none'; app.hlEl.classList.remove('selected'); }
@@ -242,7 +306,8 @@
       hidePanel(panel);
     } else {
       br.classList.remove('active'); ed.classList.add('active');
-      document.body.style.cursor = 'crosshair'; dim.classList.add('active');
+      document.body.style.cursor = 'crosshair';
+      dim.classList.add('active'); dim.style.cssText = ''; dimIn(dim);
       app.selectedEl = null; app.selectedEls = []; app.hoveredEl = null;
       clearMultiHighlights();
       if (app.hlEl) { app.hlEl.style.display = 'none'; app.hlEl.classList.remove('selected'); }
@@ -250,9 +315,6 @@
       updatePanelForSelection();
       showPanel(panel);
     }
-    const hp = document.getElementById(`${L}-history`);
-    if (hp) hp.classList.remove('open');
-    bar.querySelector(`.${L}-bhi`)?.classList.remove('open');
     if (!panel.classList.contains('open')) bar.classList.remove('expanded');
     save();
   }
@@ -332,24 +394,29 @@
 
     // History toggle
     histBtn.addEventListener('click', () => {
-      if (panel.classList.contains('open')) {
-        app.selectedEl = null; app.selectedEls = []; clearMultiHighlights();
-        if (hl) { hl.style.display = 'none'; hl.classList.remove('selected'); }
-        if (label) label.style.display = 'none';
-        hidePanel(panel);
-        app.hoveredEl = null;
+      if (animating) return;
+      const wasOpen = histPanel.classList.contains('open');
+
+      // Clear edit state
+      app.selectedEl = null; app.selectedEls = []; clearMultiHighlights();
+      if (hl) { hl.style.display = 'none'; hl.classList.remove('selected'); }
+      if (label) label.style.display = 'none';
+      app.hoveredEl = null;
+      document.body.style.cursor = '';
+      if (dim.classList.contains('active')) {
+        dimOut(dim).then(() => { dim.classList.remove('active'); dim.style.cssText = ''; });
       }
-      const isOpen = histPanel.classList.toggle('open');
-      histBtn.classList.toggle('open', isOpen);
-      bar.classList.toggle('expanded', isOpen);
-      if (isOpen) {
-        fetchAndRenderHistory();
-        browseBtn.classList.remove('active');
-        editBtn.classList.remove('active');
-        document.body.style.cursor = ''; dim.classList.remove('active');
-        app.mode = 'browse';
-      } else {
+      app.mode = 'browse';
+      browseBtn.classList.remove('active');
+      editBtn.classList.remove('active');
+
+      if (wasOpen) {
+        hideHistory(histPanel);
+        histBtn.classList.remove('open');
         browseBtn.classList.add('active');
+      } else {
+        showHistory(histPanel, bar);
+        fetchAndRenderHistory();
       }
     });
 
