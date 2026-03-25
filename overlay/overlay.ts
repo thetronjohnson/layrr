@@ -676,7 +676,7 @@
             toast(`Previewing: ${msg.message || msg.hash.slice(0, 7)}`, 'info');
             fetchAndRenderHistory();
             saveState();
-            setTimeout(() => location.reload(), 800);
+            setTimeout(() => location.reload(), 1000);
           } else { toast('Preview failed', 'error'); }
         }
         else if (msg.type === 'version-restore-result') {
@@ -686,7 +686,7 @@
             toast('Back to latest', 'success');
             fetchAndRenderHistory();
             saveState();
-            setTimeout(() => location.reload(), 800);
+            setTimeout(() => location.reload(), 1000);
           } else { toast('Restore failed', 'error'); }
         }
         else if (msg.type === 'version-revert-result') {
@@ -696,7 +696,7 @@
             toast('Permanently reverted', 'success');
             fetchAndRenderHistory();
             saveState();
-            setTimeout(() => location.reload(), 800);
+            setTimeout(() => location.reload(), 1000);
           } else { toast('Revert failed', 'error'); }
         }
       } catch {}
