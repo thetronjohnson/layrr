@@ -69,10 +69,12 @@
 
   // ---- Fonts ----
   function loadFonts() {
+    const container = document.createElement('div');
+    container.id = `${L}-fonts`;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = '/__layrr__/fonts/lucide.css';
-    document.head.appendChild(link);
+    container.appendChild(link);
 
     const s = document.createElement('style');
     s.textContent = `
@@ -80,12 +82,14 @@
       @font-face{font-family:"Geist Mono";src:url("/__layrr__/fonts/GeistMono-Regular.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
       @font-face{font-family:"Geist Mono";src:url("/__layrr__/fonts/GeistMono-Medium.woff2") format("woff2");font-weight:500;font-style:normal;font-display:swap}
     `;
-    document.head.appendChild(s);
+    container.appendChild(s);
+    document.head.appendChild(container);
   }
 
   // ---- Styles ----
   function injectStyles() {
     const s = document.createElement('style');
+    s.id = `${L}-styles`;
     s.textContent = `
       @keyframes ${L}-in{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
       @keyframes ${L}-out{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(40px)}}
@@ -855,8 +859,13 @@
     saveState();
   }
 
+  function ensureStyles() {
+    // Re-inject if styles were removed (e.g. Astro View Transitions swap the full document)
+    if (!document.getElementById(`${L}-styles`)) injectStyles();
+    if (!document.getElementById(`${L}-fonts`)) loadFonts();
+  }
   function init() {
-    loadFonts(); injectStyles();
+    ensureStyles();
     const { dim, hl, label, panel, bar } = createElements();
     hlEl = hl; labelEl = label; panelEl = panel;
     connectWs(bar);
@@ -1044,6 +1053,31 @@
     });
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
+  function reinjectIfNeeded() {
+    if (!document.querySelector(`.${L}-root`) && document.body) {
+      init();
+    }
+  }
+
+  function start() {
+    init();
+
+    // Re-inject after client-side navigations that replace the DOM
+    let reinjectTimer: ReturnType<typeof setTimeout> | null = null;
+    new MutationObserver(() => {
+      if (!document.querySelector(`.${L}-root`) && document.body) {
+        if (reinjectTimer) clearTimeout(reinjectTimer);
+        reinjectTimer = setTimeout(() => { reinjectTimer = null; reinjectIfNeeded(); }, 50);
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+
+    // Framework-specific navigation events
+    document.addEventListener('astro:after-swap', reinjectIfNeeded);  // Astro View Transitions
+    document.addEventListener('sveltekit:navigation-end', reinjectIfNeeded);  // SvelteKit
+    // Generic navigation events (covers back/forward in all SPAs)
+    window.addEventListener('popstate', () => setTimeout(reinjectIfNeeded, 100));
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
 })();
