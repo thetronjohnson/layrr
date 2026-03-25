@@ -19,7 +19,7 @@
   function saveState() {
     try {
       const bar = document.getElementById(`${L}-bar`);
-      const state: any = { mode, editCount, editHistory, lastEditTimestamp };
+      const state: any = { mode, editCount, lastEditTimestamp };
       if (bar) {
         const s = bar.style;
         if (s.left && s.top) {
@@ -39,7 +39,7 @@
   let ws: WebSocket | null = null;
   let connected = false;
   let editCount: number = saved.editCount || 0;
-  let editHistory: Array<{ tagName: string; instruction: string }> = saved.editHistory || [];
+  // History is now fetched from git via /__layrr__/history
   let lastEdit: { tagName: string; instruction: string } | null = null;
   let historyPage = 0;
 
@@ -118,7 +118,7 @@
 
       /* Edit panel — lives inside #bar */
       .${L}-panel{
-        display:none;width:320px;
+        display:none;width:320px;max-height:280px;overflow-y:auto;
         border-top:1px solid ${C.panelBorder};
         border-radius:14px 14px 0 0;
         animation:${L}-in .2s cubic-bezier(.2,.8,.2,1);
@@ -263,14 +263,10 @@
       .${L}-bhi:hover{color:${C.textMuted};transform:scale(1.02)}
       .${L}-bhi:active{transform:scale(.97)}
       .${L}-bhi.open{background:${C.surface};color:${C.text}}
-      .${L}-bundo{background:transparent;color:${C.textDim}}
-      .${L}-bundo:hover{color:${C.textMuted};transform:scale(1.02)}
-      .${L}-bundo:active{transform:scale(.97)}
-      .${L}-bundo:disabled{opacity:.35;cursor:not-allowed;transform:none}
 
       /* History panel — inline in bar */
       #${L}-history{
-        display:none;width:320px;max-height:300px;overflow-y:auto;
+        display:none;width:320px;max-height:280px;overflow-y:auto;
         border-top:1px solid ${C.panelBorder};
         border-radius:14px 14px 0 0;
         animation:${L}-in .2s cubic-bezier(.2,.8,.2,1);
@@ -295,12 +291,48 @@
       .${L}-he-list{margin:6px 10px 10px;background:${C.surface};border:1px solid ${C.border};border-radius:8px;overflow:hidden}
       .${L}-he{
         padding:8px 10px;border-bottom:1px solid ${C.border};
-        font-size:12px;color:${C.text};
+        font-size:12px;color:${C.text};display:flex;align-items:center;gap:8px;
       }
       .${L}-he:last-child{border-bottom:none}
-      .${L}-he-el{font-family:'Geist Mono',monospace;font-size:10px;color:${C.textDim};margin-bottom:2px}
-      .${L}-he-inst{color:${C.textMuted};font-size:11px}
+      .${L}-he-body{flex:1;min-width:0}
+      .${L}-he-el{font-family:'Geist Mono',monospace;font-size:10px;color:${C.textDim};margin-top:2px}
+      .${L}-he-inst{color:${C.textMuted};font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .${L}-he.active .${L}-he-inst{color:${C.success}}
+      .${L}-he-tag{
+        display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+        padding:1px 5px;border-radius:4px;margin-left:6px;vertical-align:middle;
+      }
+      .${L}-he-tag.latest{background:${C.surface};color:${C.textDim}}
+      .${L}-he.active .${L}-he-tag.latest{background:rgba(74,222,128,.12);color:${C.success}}
+      .${L}-he.clickable{cursor:pointer}
+      .${L}-he.clickable:hover{background:rgba(161,161,170,.06)}
+      .${L}-he-actions{display:flex;gap:3px;flex-shrink:0}
+      .${L}-he-btn{
+        width:24px;height:24px;border:none;border-radius:6px;
+        background:transparent;color:${C.textDim};cursor:pointer;
+        display:flex;align-items:center;justify-content:center;font-size:12px;
+        transition:all .12s ease;
+      }
+      .${L}-he-btn:hover{background:${C.surface};color:${C.textMuted}}
+      .${L}-he-btn:active{transform:scale(.9)}
+      .${L}-he-btn.danger:hover{background:rgba(251,113,133,.1);color:${C.error}}
       .${L}-he-empty{padding:20px 14px;text-align:center;color:${C.textDim};font-size:12px;margin:6px 10px 10px}
+      .${L}-confirm-overlay{
+        position:absolute;inset:0;background:#18181b;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+        border-radius:14px 14px 0 0;z-index:10;padding:16px;
+      }
+      .${L}-confirm-msg{font-size:12px;color:${C.textMuted};text-align:center;line-height:1.5}
+      .${L}-confirm-actions{display:flex;gap:8px}
+      .${L}-confirm-actions button{
+        padding:5px 14px;border-radius:6px;border:none;font-size:11px;font-weight:600;
+        font-family:'Geist Mono',monospace;cursor:pointer;transition:all .12s ease;
+      }
+      .${L}-confirm-actions button:active{transform:scale(.95)}
+      .${L}-confirm-cancel{background:${C.btnBg};color:${C.textMuted}}
+      .${L}-confirm-cancel:hover{background:${C.btnHover}}
+      .${L}-confirm-yes{background:rgba(251,113,133,.15);color:${C.error}}
+      .${L}-confirm-yes:hover{background:rgba(251,113,133,.25)}
     `;
     document.head.appendChild(s);
   }
@@ -357,7 +389,6 @@
         <div class="${L}-bs"></div>
         <button class="${L}-bb ${L}-bbr active" data-tip="Browse"><i class="icon-mouse-pointer"></i></button>
         <button class="${L}-bb ${L}-bbe" data-tip="Edit"><i class="icon-pencil"></i></button>
-        <button class="${L}-bb ${L}-bundo" data-tip="Undo" disabled><i class="icon-undo-2"></i></button>
         <button class="${L}-bb ${L}-bhi" data-tip="History"><i class="icon-clock"></i></button>
       </div>
     `;
@@ -612,7 +643,6 @@
     }
     if (msg.success) {
       editCount++;
-      if (lastEdit) addEditToHistory(lastEdit.tagName, lastEdit.instruction);
       lastEdit = null;
       selectedEl = null;
       selectedEls = [];
@@ -623,11 +653,6 @@
       if (panelEl) { hidePanel(panelEl); }
       saveState();
       toast('Done!', 'success');
-      // Show undo in toolbar
-      if (msg.canUndo) {
-        const ub = document.querySelector(`.${L}-bundo`) as HTMLButtonElement;
-        if (ub) { ub.disabled = false; }
-      }
       setTimeout(() => location.reload(), 2500);
     } else {
       toast(msg.message || 'Edit failed', 'error');
@@ -635,20 +660,6 @@
   }
 
 
-  function onUndoResult(msg: any) {
-    const ub = document.querySelector(`.${L}-bundo`) as HTMLButtonElement;
-    if (msg.success) {
-      if (ub) {
-        if (msg.canUndo) { ub.disabled = false; }
-        else { ub.disabled = true; }
-      }
-      toast('Reverted!', 'success');
-      setTimeout(() => location.reload(), 1500);
-    } else {
-      if (ub) ub.disabled = false;
-      toast(msg.message || 'Undo failed', 'error');
-    }
-  }
 
   function connectWs(bar: HTMLElement) {
     ws = new WebSocket(`ws://${location.hostname}:${WS_PORT}/__layrr__/ws`);
@@ -657,49 +668,144 @@
       try {
         const msg = JSON.parse(ev.data);
         if (msg.type === 'edit-result') onEditResult(msg);
-        else if (msg.type === 'undo-result') onUndoResult(msg);
+        else if (msg.type === 'version-preview-result') {
+          if (msg.success) {
+            previewingHash = msg.hash;
+            sessionStorage.setItem('__layrr_preview', msg.hash);
+            toast(`Previewing: ${msg.message || msg.hash.slice(0, 7)}`, 'info');
+            fetchAndRenderHistory();
+            setTimeout(() => location.reload(), 1000);
+          } else { toast('Preview failed', 'error'); }
+        }
+        else if (msg.type === 'version-restore-result') {
+          if (msg.success) {
+            previewingHash = null;
+            sessionStorage.removeItem('__layrr_preview');
+            toast('Back to latest', 'success');
+            fetchAndRenderHistory();
+            setTimeout(() => location.reload(), 1000);
+          } else { toast('Restore failed', 'error'); }
+        }
+        else if (msg.type === 'version-revert-result') {
+          if (msg.success) {
+            previewingHash = null;
+            sessionStorage.removeItem('__layrr_preview');
+            toast('Permanently reverted', 'success');
+            fetchAndRenderHistory();
+            setTimeout(() => location.reload(), 1000);
+          } else { toast('Revert failed', 'error'); }
+        }
       } catch {}
     };
     ws.onclose = () => { connected = false; setTimeout(() => connectWs(bar), 2000); };
   }
 
-  function addEditToHistory(tagName: string, instruction: string) {
-    editHistory.push({ tagName, instruction });
-    historyPage = 0;
-    renderHistory();
-    saveState();
-  }
+  let previewingHash: string | null = sessionStorage.getItem('__layrr_preview') || null;
 
-  function renderHistory() {
+  async function fetchAndRenderHistory() {
     const container = document.getElementById(`${L}-history`);
     if (!container) return;
-    if (editHistory.length === 0) {
-      container.innerHTML = `<div class="${L}-hh"><span>History</span><button class="${L}-hh-close"><i class="icon-x"></i></button></div><div class="${L}-he-empty">No edits yet</div>`;
+    try {
+      const resp = await fetch('/__layrr__/history');
+      const data: { head: string; commits: Array<{ hash: string; message: string; timeAgo: string }> } = await resp.json();
+      if (data.commits.length === 0) {
+        container.innerHTML = `<div class="${L}-hh"><span>History</span><button class="${L}-hh-close"><i class="icon-x"></i></button></div><div class="${L}-he-empty">No edits yet</div>`;
+        container.querySelector(`.${L}-hh-close`)?.addEventListener('click', () => closeHistory());
+        return;
+      }
+      const PAGE_SIZE = 5;
+      const totalPages = Math.ceil(data.commits.length / PAGE_SIZE);
+      if (historyPage >= totalPages) historyPage = totalPages - 1;
+      const start = historyPage * PAGE_SIZE;
+      const page = data.commits.slice(start, start + PAGE_SIZE);
+
+      const nav = totalPages > 1
+        ? `<div class="${L}-hh-nav">` +
+          `<button class="${L}-hh-prev"${historyPage === 0 ? ' disabled' : ''}><i class="icon-chevron-left"></i></button>` +
+          `<button class="${L}-hh-next"${historyPage >= totalPages - 1 ? ' disabled' : ''}><i class="icon-chevron-right"></i></button>` +
+          `</div>` : '';
+
+      const latestHash = data.commits[0]?.hash;
+      const isPreviewingOlder = previewingHash && previewingHash !== latestHash;
+
+      let html = `<div class="${L}-hh"><span>History (${data.commits.length})</span>${nav}<button class="${L}-hh-close"><i class="icon-x"></i></button></div>`;
+
+      html += `<div class="${L}-he-list">`;
+      html += page.map((c, i) => {
+        const isLatest = c.hash === latestHash;
+        const isActive = previewingHash ? c.hash === previewingHash : c.hash === data.head && i === 0;
+        const clickable = !isActive;
+        const cls = (isActive ? 'active' : '') + (clickable ? ' clickable' : '');
+
+        let tag = '';
+        if (isLatest) tag = `<span class="${L}-he-tag latest">latest</span>`;
+
+        // Only show revert on non-active rows
+        const actions = isLatest ? '' :
+          `<button class="${L}-he-btn danger" data-action="revert" data-hash="${c.hash}" title="Revert to this version"><i class="icon-rotate-ccw"></i></button>`;
+
+        return `<div class="${L}-he ${cls}" data-hash="${c.hash}">` +
+          `<div class="${L}-he-body">` +
+            `<div class="${L}-he-inst">${c.message}${tag}</div>` +
+            `<div class="${L}-he-el">${c.timeAgo}</div>` +
+          `</div>` +
+          `<div class="${L}-he-actions">${actions}</div>` +
+        `</div>`;
+      }).join('') + '</div>';
+      container.innerHTML = html;
+
+      // Wire up events
+      container.querySelector(`.${L}-hh-prev`)?.addEventListener('click', () => { historyPage--; fetchAndRenderHistory(); });
+      container.querySelector(`.${L}-hh-next`)?.addEventListener('click', () => { historyPage++; fetchAndRenderHistory(); });
       container.querySelector(`.${L}-hh-close`)?.addEventListener('click', () => closeHistory());
-      return;
+
+      // Click row to preview that version (or restore to latest)
+      container.querySelectorAll(`.${L}-he.clickable`).forEach(row => {
+        row.addEventListener('click', () => {
+          const hash = (row as HTMLElement).dataset.hash;
+          if (!hash || !ws || ws.readyState !== WebSocket.OPEN) return;
+          if (hash === latestHash && isPreviewingOlder) {
+            ws.send(JSON.stringify({ type: 'version-restore' }));
+          } else {
+            ws.send(JSON.stringify({ type: 'version-preview', hash }));
+          }
+        });
+      });
+
+      // Revert buttons
+      container.querySelectorAll(`.${L}-he-btn`).forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const hash = (btn as HTMLElement).dataset.hash;
+          if (!hash || !ws || ws.readyState !== WebSocket.OPEN) return;
+          showRevertConfirm(container, hash);
+        });
+      });
+    } catch {
+      container.innerHTML = `<div class="${L}-hh"><span>History</span><button class="${L}-hh-close"><i class="icon-x"></i></button></div><div class="${L}-he-empty">Could not load history</div>`;
+      container.querySelector(`.${L}-hh-close`)?.addEventListener('click', () => closeHistory());
     }
-    const PAGE_SIZE = 5;
-    const reversed = editHistory.slice().reverse();
-    const totalPages = Math.ceil(reversed.length / PAGE_SIZE);
-    if (historyPage >= totalPages) historyPage = totalPages - 1;
-    const start = historyPage * PAGE_SIZE;
-    const page = reversed.slice(start, start + PAGE_SIZE);
+  }
 
-    const nav = totalPages > 1
-      ? `<div class="${L}-hh-nav">` +
-        `<button class="${L}-hh-prev"${historyPage === 0 ? ' disabled' : ''}><i class="icon-chevron-left"></i></button>` +
-        `<button class="${L}-hh-next"${historyPage >= totalPages - 1 ? ' disabled' : ''}><i class="icon-chevron-right"></i></button>` +
-        `</div>` : '';
-
-    let html = `<div class="${L}-hh"><span>History (${editHistory.length})</span>${nav}<button class="${L}-hh-close"><i class="icon-x"></i></button></div>`;
-    html += `<div class="${L}-he-list">`;
-    html += page.map(e =>
-      `<div class="${L}-he"><div class="${L}-he-el">&lt;${e.tagName}&gt;</div><div class="${L}-he-inst">${e.instruction}</div></div>`
-    ).join('') + '</div>';
-    container.innerHTML = html;
-    container.querySelector(`.${L}-hh-prev`)?.addEventListener('click', () => { historyPage--; renderHistory(); });
-    container.querySelector(`.${L}-hh-next`)?.addEventListener('click', () => { historyPage++; renderHistory(); });
-    container.querySelector(`.${L}-hh-close`)?.addEventListener('click', () => closeHistory());
+  function showRevertConfirm(container: HTMLElement, hash: string) {
+    const overlay = document.createElement('div');
+    overlay.className = `${L}-confirm-overlay`;
+    overlay.innerHTML = `
+      <div class="${L}-confirm-msg">Revert to this version?<br>All edits after this point will be lost.</div>
+      <div class="${L}-confirm-actions">
+        <button class="${L}-confirm-cancel">Cancel</button>
+        <button class="${L}-confirm-yes">Revert</button>
+      </div>
+    `;
+    container.style.position = 'relative';
+    container.appendChild(overlay);
+    overlay.querySelector(`.${L}-confirm-cancel`)?.addEventListener('click', () => overlay.remove());
+    overlay.querySelector(`.${L}-confirm-yes`)?.addEventListener('click', () => {
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'version-revert', hash }));
+      }
+      overlay.remove();
+    });
   }
 
   function closeHistory() {
@@ -714,6 +820,10 @@
   }
 
   function setMode(m: Mode, hl: HTMLElement, label: HTMLElement, panel: HTMLElement, bar: HTMLElement, dim: HTMLElement, silent = false) {
+    if (m === 'edit' && previewingHash) {
+      toast('Go back to latest to make edits', 'info');
+      return;
+    }
     mode = m;
     const br = bar.querySelector(`.${L}-bbr`) as HTMLElement;
     const ed = bar.querySelector(`.${L}-bbe`) as HTMLElement;
@@ -747,12 +857,8 @@
     hlEl = hl; labelEl = label; panelEl = panel;
     connectWs(bar);
 
-    // Check for edit results missed during HMR reload + restore undo state
+    // Check for edit results missed during HMR reload
     fetch('/__layrr__/edit-status').then(r => r.json()).then(data => {
-      if (data.canUndo) {
-        const ub = bar.querySelector(`.${L}-bundo`) as HTMLButtonElement;
-        if (ub) ub.disabled = false;
-      }
       if (data.success !== null && data.timestamp > lastEditTimestamp) {
         lastEditTimestamp = data.timestamp;
         onEditResult(data);
@@ -766,7 +872,6 @@
     const browseBtn = bar.querySelector(`.${L}-bbr`) as HTMLElement;
     const editBtn = bar.querySelector(`.${L}-bbe`) as HTMLElement;
     const histBtn = bar.querySelector(`.${L}-bhi`) as HTMLElement;
-    const undoBtn = bar.querySelector(`.${L}-bundo`) as HTMLButtonElement;
     const histPanel = document.getElementById(`${L}-history`) as HTMLElement;
     const barDrag = bar.querySelector(`.${L}-bd`) as HTMLElement;
 
@@ -788,6 +893,7 @@
       bar.classList.toggle('expanded', isOpen);
       // Deactivate browse/edit when history is open
       if (isOpen) {
+        fetchAndRenderHistory();
         browseBtn.classList.remove('active');
         editBtn.classList.remove('active');
         document.body.style.cursor = ''; dim.classList.remove('active');
@@ -798,15 +904,8 @@
     });
 
     // Undo
-    undoBtn.addEventListener('click', () => {
-      if (ws?.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'undo-request' }));
-        undoBtn.disabled = true;
-      }
-    });
-
     // Restore saved state
-    renderHistory();
+    fetchAndRenderHistory();
     if (saved.barPos) {
       bar.style.right = 'auto'; bar.style.bottom = 'auto';
       bar.style.left = saved.barPos.left; bar.style.top = saved.barPos.top;

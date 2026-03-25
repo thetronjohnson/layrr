@@ -1,5 +1,6 @@
 import { WebSocketServer } from 'ws';
 import { createServer, type Server } from 'http';
+import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -44,7 +45,29 @@ export async function startProxy(
     if (req.url === '/__layrr__/edit-status') {
       const result = editQueue.lastResult;
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ ...(result || { success: null }), canUndo: editQueue.canUndo }));
+      res.end(JSON.stringify(result || { success: null }));
+      return;
+    }
+
+    if (req.url === '/__layrr__/history') {
+      try {
+        const log = execSync(
+          'git log --all --grep="\\[layrr\\]" --format="%H|%s|%ar" -20',
+          { cwd: projectRoot, encoding: 'utf-8' }
+        ).trim();
+        const head = execSync('git rev-parse HEAD', { cwd: projectRoot, encoding: 'utf-8' }).trim();
+        const commits = log ? log.split('\n').map(line => {
+          const [hash, ...rest] = line.split('|');
+          const timeAgo = rest.pop()!;
+          const message = rest.join('|').replace('[layrr] ', '');
+          return { hash, message, timeAgo };
+        }) : [];
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ head, commits }));
+      } catch {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ head: '', commits: [] }));
+      }
       return;
     }
 
