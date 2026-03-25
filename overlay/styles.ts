@@ -166,7 +166,7 @@ export function injectStyles() {
     /* ---- Bar + Toolbar ---- */
     #${L}-bar{
       position:fixed;bottom:16px;right:16px;z-index:999999;
-      display:flex;flex-direction:column;
+      display:flex;flex-direction:column;justify-content:flex-end;
       background:${C.panel};
       backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);
       border:1px solid ${C.panelBorder};border-radius:${radius.xl};

@@ -12,11 +12,12 @@ let activeContentAnim: ReturnType<typeof animate> | null = null;
 
 function cancelBarAnim(bar: HTMLElement) {
   if (activeBarAnim) {
-    activeBarAnim.cancel();
+    // Complete the animation instantly instead of cancelling to initial state
+    activeBarAnim.finish();
     activeBarAnim = null;
   }
   if (activeContentAnim) {
-    activeContentAnim.cancel();
+    activeContentAnim.finish();
     activeContentAnim = null;
   }
   bar.style.width = '';
@@ -112,13 +113,46 @@ export function barIn(el: HTMLElement) {
   return animate(el, { opacity: [0, 1], y: [20, 0], scale: [0.92, 1] }, springGentle);
 }
 
-// ---- Panel content swap (bar stays expanded) ----
+// ---- Panel content swap (bar stays expanded, animate height + crossfade) ----
 export function contentSwap(bar: HTMLElement, outEl: HTMLElement, inEl: HTMLElement) {
   cancelBarAnim(bar);
-  outEl.classList.remove('open');
-  outEl.style.cssText = '';
+
+  // Measure current bar height (with old panel)
+  const startHeight = bar.getBoundingClientRect().height;
+
+  // Show incoming panel (hidden) to measure target height
   inEl.classList.add('open');
-  return animate(inEl, { opacity: [0, 1], y: [4, 0] }, { duration: 0.25, delay: 0.03 });
+  inEl.style.opacity = '0';
+  outEl.style.display = 'none'; // temporarily hide old panel for measurement
+  const endHeight = bar.getBoundingClientRect().height;
+  outEl.style.display = ''; // restore
+
+  // Animate bar height between panel sizes
+  if (Math.abs(startHeight - endHeight) > 2) {
+    activeBarAnim = animate(bar, {
+      height: [`${startHeight}px`, `${endHeight}px`],
+    }, springSmooth);
+    activeBarAnim.then(() => {
+      activeBarAnim = null;
+      bar.style.height = '';
+    });
+  }
+
+  // Crossfade: old out, new in simultaneously
+  animate(outEl, { opacity: [1, 0] }, { duration: 0.15 }).then(() => {
+    outEl.classList.remove('open');
+    outEl.style.cssText = '';
+  });
+
+  return animate(inEl, { opacity: [0, 1], y: [3, 0] }, { duration: 0.25, delay: 0.06 }).then(() => {
+    inEl.style.opacity = '';
+    inEl.style.transform = '';
+  });
+}
+
+// ---- Inner content transition (within a panel) ----
+export function contentFadeIn(el: HTMLElement) {
+  return animate(el, { opacity: [0, 1], y: [4, 0] }, { duration: 0.2 });
 }
 
 // ---- Toast enter / exit ----

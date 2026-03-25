@@ -10,7 +10,7 @@
   const { app, loadState, initState, save } = await import('./state');
   const { initSourceMapping, extractSourceInfo, getTag, getBreadcrumb, getSelector, posHL, posLabel } = await import('./source');
   const { fetchAndRenderHistory, closeHistory } = await import('./history');
-  const { barExpand, barCollapse, contentSwap, dimIn, dimOut } = await import('./animate');
+  const { barExpand, barCollapse, contentSwap, contentFadeIn, dimIn, dimOut } = await import('./animate');
 
   await initSourceMapping();
 
@@ -32,9 +32,6 @@
       contentSwap(bar, hp, panel);
       return;
     }
-
-    // If already expanded with this panel, just ensure it's visible
-    if (bar.classList.contains('expanded') && panel.classList.contains('open')) return;
 
     // Expand bar with animation
     animating = true;
@@ -131,6 +128,7 @@
       elInfo.innerHTML = `<div class="${L}-eh">Click to select an element or <kbd>Shift+click</kbd> to select multiple</div>`;
       if (ia) ia.style.display = 'none';
       if (hn) hn.style.display = 'none';
+      contentFadeIn(elInfo);
       return;
     }
 
@@ -145,6 +143,7 @@
         <div class="${L}-ex">${el.textContent?.trim().slice(0, 50) || '(empty)'}</div>
         <div class="${L}-ep">${getBreadcrumb(el)}</div>
       `;
+      contentFadeIn(elInfo);
     } else {
       let html = `<div class="${L}-et">Selected<span class="${L}-sel-count">${app.selectedEls.length}</span></div>`;
       html += `<div class="${L}-ei-multi">`;
@@ -154,6 +153,7 @@
       });
       html += `</div>`;
       elInfo.innerHTML = html;
+      contentFadeIn(elInfo);
       elInfo.querySelectorAll(`.${L}-ei-rm`).forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -271,7 +271,8 @@
 
   // ---- Mode ----
   function setMode(m: 'browse' | 'edit') {
-    if (m === app.mode) return;
+    const histOpen = document.getElementById(`${L}-history`)?.classList.contains('open');
+    if (m === app.mode && !histOpen) return;
     if (m === 'edit' && app.previewingHash) {
       toast('Go back to latest to make edits', 'info');
       return;
@@ -448,6 +449,8 @@
       histPanel.classList.add('open');
       histBtn.classList.add('open');
       bar.classList.add('expanded');
+      browseBtn.classList.remove('active');
+      editBtn.classList.remove('active');
       fetchAndRenderHistory();
     }
   }
