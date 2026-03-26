@@ -6,15 +6,21 @@ export function ContainerControls({
   projectId,
   status,
   framework,
+  machineId,
 }: {
   projectId: string;
   status: string;
   framework: string | null;
+  machineId: string | null;
 }) {
   const [containerStatus, setContainerStatus] = useState(status);
   const [loading, setLoading] = useState(false);
+  const [currentMachineId, setCurrentMachineId] = useState(machineId);
 
-  const editorUrl = `https://${projectId}.layrr.dev`;
+  const flyApp = process.env.NEXT_PUBLIC_FLY_APP_NAME || "layrr-containers";
+  const editorUrl = currentMachineId
+    ? `https://${flyApp}.fly.dev`
+    : `https://${projectId}.layrr.dev`;
   const isRunning = containerStatus === "RUNNING";
   const isStarting = containerStatus === "STARTING" || containerStatus === "CREATING";
 
@@ -51,6 +57,7 @@ export function ContainerControls({
         const res = await fetch(`/api/containers/${projectId}/status`);
         const data = await res.json();
         setContainerStatus(data.status);
+        if (data.machineId) setCurrentMachineId(data.machineId);
         if (data.status === "RUNNING" || data.status === "ERROR") {
           setLoading(false);
           return;

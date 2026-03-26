@@ -42,6 +42,7 @@ export default async function ProjectPage({
             projectId={project.id}
             status={project.containerStatus}
             framework={project.framework}
+            machineId={project.flyMachineId}
           />
         </div>
 
