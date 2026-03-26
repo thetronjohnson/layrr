@@ -1,6 +1,10 @@
 <div align="center">
 
-  <img src="layrr.png" alt="layrr" width="120">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="layrr-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="layrr-light.svg">
+    <img src="layrr-dark.svg" alt="layrr" width="120">
+  </picture>
 
   <h1>layrr</h1>
 
