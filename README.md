@@ -1,6 +1,6 @@
 <div align="center">
 
-  <img src="Dwnloads/layrr(1).svg" alt="layrr" width="120">
+  <img src="layrr.png" alt="layrr" width="120">
 
   <h1>layrr</h1>
 
