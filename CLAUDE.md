@@ -4,67 +4,137 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Layrr
 
-Layrr is a CLI tool for visually editing web applications with AI. It proxies a running dev server, injects a browser overlay where users select elements and describe changes in natural language, then uses an AI agent (Claude Code or OpenAI Codex) to apply edits to the actual source code. Edits are auto-committed with a `[layrr]` prefix. Users can preview, restore, and permanently revert to any previous edit via the history panel.
+Layrr is a visual AI code editor. It lets users point at any element in a running web app, describe a change in plain English, and an AI agent edits the source code. It exists in two forms:
+
+1. **CLI** (`npx layrr --port 3000`) — open-source tool that proxies a local dev server and injects a browser overlay for visual editing
+2. **Web App** (app.layrr.dev) — hosted dashboard where users connect GitHub repos, and Layrr spins up a dev server + editor for them without touching the terminal
+
+## Monorepo Structure
+
+pnpm workspaces + Turborepo. Three packages:
+
+```
+packages/
+  cli/        — standalone CLI tool (npm: "layrr")
+  app/        — Next.js 16 dashboard
+  server/     — Hono process manager API
+```
 
 ## Build & Run
 
 ```bash
-pnpm install
-pnpm build          # Compiles TS + bundles overlay + copies font assets
-node dist/cli.js --port <dev-server-port>  # Run locally against a dev server
+pnpm install                    # install all packages
+pnpm build                      # build all via turbo
+
+# Local development (starts server + app)
+./dev.sh                        # or: pnpm dev
+
+# CLI only
+cd packages/cli && pnpm build
+node dist/cli.js --port 3000
+
+# Database
+cd packages/app && npx drizzle-kit push
 ```
 
-There are no tests or lint scripts configured.
+Dashboard runs at `http://localhost:3000`, server at `http://localhost:8787`.
 
-## Build System
+No tests or lint scripts configured.
 
-The build (`scripts/build.ts`) does three things:
-1. **Overlay bundle** — esbuild bundles `overlay/overlay.ts` → `dist/overlay.js` (IIFE, ES2020). Imports from other `overlay/` modules are bundled in.
-2. **CLI + server** — `tsc` compiles `src/` → `dist/` (ESM, ES2022)
-3. **Font assets** — copies Lucide icons and Geist Mono fonts from `node_modules/` → `dist/fonts/`
+## Environment Variables
+
+`packages/app/.env.local`:
+```
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+GITHUB_REDIRECT_URI=http://localhost:3000/api/auth/github/callback
+SESSION_SECRET=               # 32+ char random string
+LAYRR_SERVER_URL=http://localhost:8787
+LAYRR_SERVER_SECRET=dev-secret
+```
 
 ## Architecture
 
-Single-package TypeScript project (ESM). Five main modules:
+### `packages/cli` — Visual Editor CLI
 
-### `src/agents/` — Pluggable AI agents
-- `base.ts` — `Agent` interface (`applyEdit()`) and shared helpers (`checkBinary()`, `spawnAgent()`)
-- `claude.ts` — Claude Code agent (uses bundled `@anthropic-ai/claude-code` SDK)
-- `codex.ts` — OpenAI Codex agent (spawns system `codex` CLI, needs `OPENAI_API_KEY`)
-- `prompt.ts` — Builds edit prompts from element metadata + source context (single and multi-element)
-- `index.ts` — Agent registry/factory
+Proxies a dev server, injects a browser overlay, sends edit requests to an AI agent.
 
-### `src/server/` — HTTP proxy + WebSocket + version control
-- `proxy.ts` — Proxies to dev server, injects overlay into HTML, serves `/__layrr__/*` routes (overlay JS, fonts, edit-status, history)
-- `ws-handler.ts` — Routes WebSocket messages (`edit-request`, `version-preview`, `version-restore`, `version-revert`)
-- `edit-queue.ts` — FIFO queue for sequential edit processing, stores last result for status polling
-- `version.ts` — Git operations for version history: preview (detached HEAD), restore (back to branch), revert (hard reset with confirmation)
+**`src/`** — Node.js server:
+- `cli.ts` — Entry point. Parses args, resolves agent, ensures git repo, enters edit loop with selective staging
+- `server/proxy.ts` — HTTP proxy that injects overlay into HTML, serves `/__layrr__/*` routes (overlay JS, fonts, edit-status, history)
+- `server/ws-handler.ts` — Routes WebSocket messages to edit queue or version operations
+- `server/version.ts` — Git preview/restore/revert (detached HEAD for preview, reset for revert)
+- `server/edit-queue.ts` — Sequential edit processing
+- `agents/` — Pluggable AI agents. `Agent` interface with `applyEdit()`. Claude Code (bundled SDK) and Codex (system CLI)
+- `editor/source-mapper.ts` — Maps DOM elements to source files. Three-tier: `element-source` package → manual fiber/instance extraction → heuristic text/tag/class search
 
-### `src/editor/` — Source file resolution
-- `source-mapper.ts` — Resolves which source file/line to edit. Tries React fiber / Vue instance metadata first, falls back to scored heuristic search across source files.
+**`overlay/`** — Browser UI (vanilla TS, bundled as IIFE by esbuild):
+- `overlay.ts` — Entry point. Modes (browse/edit), element selection, WebSocket, keyboard shortcuts
+- `styles.ts` — CSS design system with tokens and reusable primitives. All classes scoped with `__layrr` prefix. Never use Tailwind in the overlay.
+- `animate.ts` — Spring animations via `motion` library. Bar expand/collapse, panel swaps, toasts, stagger
+- `elements.ts` — DOM builder, `toast()`, `isOwn()` guard
+- `history.ts` — Version history panel with preview/revert
+- `source.ts` — `element-source` integration for React 19+, Vue, Svelte, Solid, Preact
+- `state.ts` — Shared mutable state, sessionStorage persistence
+- `constants.ts` — `L` prefix and color palette `C`
 
-### `overlay/` — Browser overlay (separate build target, bundled as IIFE)
-- `overlay.ts` — Entry point. Event wiring: modes (browse/edit), element selection, WebSocket messages, keyboard shortcuts, edit submission, version switching
-- `constants.ts` — `L` prefix (`__layrr`) and color palette `C`
-- `state.ts` — Shared mutable state (`app` object), sessionStorage persistence for mode/position/history
-- `styles.ts` — All CSS with design system tokens (sizes, radii, shadows, transitions) and reusable primitives (`.icon-btn`, `.tag`, `.flyout`, `.card`, `.close`, `.confirm-overlay`)
-- `elements.ts` — DOM builder (`createElements()`), `isOwn()` guard, `toast()` notifications
-- `source.ts` — `element-source` integration for multi-framework source mapping (React 19+, Vue, Svelte, Solid, Preact), with manual fiber/instance fallback. Also: `getSelector()`, `posHL()`, `posLabel()`
-- `history.ts` — History panel: fetches `[layrr]` commits from `/__layrr__/history`, renders paginated list with preview/revert controls and confirmation dialog
+**Key patterns**:
+- Overlay persists across SPA navigations via MutationObserver + framework-specific hooks (`astro:after-swap`, `sveltekit:navigation-end`)
+- Every edit auto-commits with `[layrr]` prefix. Selective staging only commits agent-changed files.
+- `barExpand`/`barCollapse` animations use `motion` with `springSmooth` config. `cancelBarAnim()` with `.stop()` handles interruptions.
+- Version operations send WebSocket response BEFORE `git checkout` (checkout triggers reload which kills WS)
 
-### `src/cli.ts` — Entry point
-Parses args (`--port`, `--proxy-port`, `--agent`, `--no-open`), resolves/prompts for agent selection, runs preflight checks, starts proxy, and enters the edit loop with selective git staging.
+### `packages/app` — Next.js Dashboard
 
-### `src/config.ts` — Config persistence
-Stores agent preference in `~/.layrr/config.json`.
+Users sign in with GitHub, import repos, start/stop editors, view edit history, push changes.
 
-## Key Design Decisions
+**Stack**: Next.js 16 (App Router) + Tailwind 4 + Drizzle ORM + SQLite + arctic (GitHub OAuth) + iron-session + Framer Motion
 
-- **Agent abstraction**: All AI agents implement the same `Agent` interface. Adding a new agent means implementing `applyEdit()` and registering it in `src/agents/index.ts`.
-- **Overlay is vanilla TS**: No framework — bundled as IIFE and injected via HTML rewriting. All CSS is scoped with `__layrr` prefix to avoid collisions with the user's app. Never use Tailwind or unscoped styles.
-- **Overlay persistence across navigations**: MutationObserver on `document.documentElement` re-injects if the overlay root is removed. Framework-specific hooks (`astro:after-swap`, `sveltekit:navigation-end`) handle full-document-swap frameworks. State survives via sessionStorage.
-- **Selective staging**: Snapshots git dirty state before agent runs, only stages files that are newly changed after. Pre-existing uncommitted work is never touched.
-- **Git as version control**: Every edit auto-commits. History panel shows `[layrr]` commits from `git log`. Preview uses `git checkout --detach`, restore returns to original branch, permanent revert uses `git reset --hard`. Version operations send WebSocket response BEFORE `git checkout` because the checkout triggers dev server reload which kills the connection.
-- **Source resolution**: Three-tier strategy — (1) `element-source` package for React/Vue/Svelte/Solid/Preact fiber/instance metadata, (2) manual React `_debugSource` / Vue `__file` extraction as fallback, (3) heuristic text/tag/class matching across source files as last resort.
-- **Design system in styles.ts**: Tokens (`size`, `radius`, `shadow`, `ease`) and reusable primitive classes (`.icon-btn`, `.flyout`, `.close`, `.tag`, `.card`, `.confirm-overlay`). New UI components should compose from these primitives.
-- **Sequential edit processing**: FIFO queue ensures one edit runs at a time. No concurrent agent execution.
+**`src/lib/`**:
+- `auth.ts` — GitHub OAuth via `arctic`, encrypted sessions via `iron-session`
+- `db.ts` — Drizzle + better-sqlite3. DB file at `layrr.db` in cwd
+- `schema.ts` — Three tables: `users`, `projects`, `editEvents`
+- `server-api.ts` — HTTP client to the process manager server (auth via shared secret)
+- `github.ts` — GitHub API (list repos, get repo)
+
+**`src/app/`** pages:
+- `/` — Landing, redirects to dashboard if logged in
+- `/sign-in` — GitHub OAuth button
+- `/dashboard` — Project grid with status pills, import modal
+- `/dashboard/project/[id]` — Editor controls (start/stop/open), edit history from git, push to GitHub, fresh clone
+
+**Auth flow**: GitHub OAuth → `arctic` exchanges code → fetch user + email from GitHub API → upsert in SQLite → set `iron-session` cookie
+
+**Design language**: Dark-only, Geist Mono font, glassmorphic cards (`bg-card`, `ring-1 ring-foreground/10`), Tailwind 4 with `@theme inline` color tokens matching layrr.dev site
+
+### `packages/server` — Process Manager
+
+Hono API that manages user projects as local child processes. No containers.
+
+**Endpoints** (all require `Authorization: Bearer` with shared secret):
+- `POST /projects/:id/start` — Clone repo (if needed), detect framework/PM, install deps, spawn dev server + layrr proxy
+- `POST /projects/:id/stop` — Kill processes, release ports
+- `GET /projects/:id/status` — Process state, ports, framework, edit count from git
+- `GET /projects/:id/edits` — `[layrr]` commits from git log
+- `POST /projects/:id/push` — Push edits to GitHub branch
+- `POST /projects/:id/fresh-clone` — Delete workspace for re-clone on next start
+
+**Key patterns**:
+- Workspaces at `~/.layrr/workspaces/{projectId}/`
+- Port pools: dev 5100-5199, proxy 6100-6199. Checks actual port availability before allocating.
+- Framework detection from `package.json` deps → framework-specific dev commands (e.g., `npx next dev -p PORT -H 0.0.0.0`)
+- Orphan process cleanup on startup: scans port ranges, kills any PIDs found via `lsof`
+- Workspace reuse: starting an existing project skips clone, preserves edits. Only `fresh-clone` deletes.
+- Git identity set from user's GitHub username + email
+- `detached: true` on child processes for clean group kills via `process.kill(-pid)`
+
+## How the Packages Connect
+
+```
+Browser → Next.js App (:3000) → Hono Server (:8787) → Child Processes
+                                                        ├── dev server (:5100+)
+                                                        └── layrr proxy (:6100+)
+         Browser (new tab) → layrr proxy (:6100+) → dev server (:5100+)
+```
+
+The dashboard calls the server via `server-api.ts`. The server spawns the CLI's proxy process which serves the overlay. Users open the proxy URL in a new tab to use the visual editor.
