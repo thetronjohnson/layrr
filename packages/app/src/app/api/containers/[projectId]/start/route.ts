@@ -35,7 +35,7 @@ export async function POST(
   }).where(eq(projects.id, projectId));
 
   // Fire and forget — don't await the long process
-  startContainer(projectId, project.githubRepo || '', project.branch, user?.githubToken || '', user?.githubUsername || 'layrr', user?.email || '')
+  startContainer(projectId, project.githubRepo || '', project.branch, user?.githubToken || '', user?.githubUsername || 'layrr', user?.email || '', project.sharePassword || undefined)
     .then(async (result) => {
       await db.update(projects).set({
         containerStatus: result.status === 'running' ? 'RUNNING' as any : 'ERROR' as any,

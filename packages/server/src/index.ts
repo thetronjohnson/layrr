@@ -24,15 +24,16 @@ app.use('*', async (c, next) => {
 // Start a project
 app.post('/projects/:id/start', async (c) => {
   const { id } = c.req.param();
-  const { githubRepo, branch, githubToken, gitUsername, gitEmail } = await c.req.json();
+  const { githubRepo, branch, githubToken, gitUsername, gitEmail, sharePassword } = await c.req.json();
 
   try {
-    const project = await startProject(id, githubRepo, branch || 'main', githubToken, gitUsername, gitEmail);
+    const project = await startProject(id, githubRepo, branch || 'main', githubToken, gitUsername, gitEmail, sharePassword);
     return c.json({
       status: project.status,
       proxyPort: project.proxyPort,
       devPort: project.devPort,
       framework: project.framework,
+      accessToken: project.accessToken,
     });
   } catch (err: any) {
     return c.json({ error: err.message }, 500);
@@ -59,20 +60,22 @@ app.get('/projects/:id/status', (c) => {
     devPort: project.devPort,
     framework: project.framework,
     editCount: (project as any).editCount || 0,
+    accessToken: project.accessToken,
   });
 });
 
 // Create from template
 app.post('/projects/:id/create-from-template', async (c) => {
   const { id } = c.req.param();
-  const { name, prompt, gitUsername, gitEmail } = await c.req.json();
+  const { name, prompt, gitUsername, gitEmail, sharePassword } = await c.req.json();
   try {
-    const project = await createFromTemplate(id, name, prompt, gitUsername, gitEmail);
+    const project = await createFromTemplate(id, name, prompt, gitUsername, gitEmail, sharePassword);
     return c.json({
       status: project.status,
       proxyPort: project.proxyPort,
       devPort: project.devPort,
       framework: project.framework,
+      accessToken: project.accessToken,
     });
   } catch (err: any) {
     return c.json({ error: err.message }, 500);

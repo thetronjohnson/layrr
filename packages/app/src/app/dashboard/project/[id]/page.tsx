@@ -96,7 +96,7 @@ export default async function ProjectPage({
 
 
         {/* Actions */}
-        <ProjectActions projectId={project.id} branch={project.branch} />
+        <ProjectActions projectId={project.id} branch={project.branch} sharePassword={project.sharePassword} />
 
         {/* Edit history */}
         <EditHistory projectId={project.id} />

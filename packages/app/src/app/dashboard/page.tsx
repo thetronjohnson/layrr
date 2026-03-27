@@ -37,9 +37,19 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-xl font-bold">Projects</h1>
-        <ProjectActions />
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-1 rounded-lg bg-secondary p-1">
+            <button className="rounded-md bg-background px-3 py-1.5 text-xs font-semibold shadow-sm">
+              Projects
+            </button>
+            <button className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground cursor-not-allowed" disabled>
+              Team
+              <span className="ml-1.5 rounded bg-foreground/5 px-1 py-0.5 text-[9px] text-muted-foreground/60">soon</span>
+            </button>
+          </div>
+          <ProjectActions />
+        </div>
       </div>
 
       {userProjects.length === 0 ? (

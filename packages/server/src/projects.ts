@@ -2,6 +2,7 @@ import { spawn, type ChildProcess, execSync } from 'child_process';
 import { existsSync, mkdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { createServer } from 'net';
+import { randomUUID } from 'crypto';
 
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(process.env.HOME || '/tmp', '.layrr', 'workspaces');
 
@@ -22,6 +23,7 @@ export interface ProjectProcess {
   status: 'stopped' | 'starting' | 'running' | 'error';
   logs: string[];
   workDir: string;
+  accessToken: string;
 }
 
 const projects = new Map<string, ProjectProcess>();
@@ -114,7 +116,7 @@ function killProcess(proc: ChildProcess | null) {
   }, 5000);
 }
 
-export async function startProject(id: string, githubRepo: string, branch: string, githubToken: string, gitUsername?: string, gitEmail?: string): Promise<ProjectProcess> {
+export async function startProject(id: string, githubRepo: string, branch: string, githubToken: string, gitUsername?: string, gitEmail?: string, sharePassword?: string): Promise<ProjectProcess> {
   // If already running, return it
   const existing = projects.get(id);
   if (existing && existing.status === 'running') return existing;
@@ -129,6 +131,7 @@ export async function startProject(id: string, githubRepo: string, branch: strin
   const proxyPort = await allocatePort(PROXY_PORT_START, PROXY_PORT_END, usedProxyPorts);
   const workDir = join(WORKSPACE_DIR, id);
 
+  const accessToken = randomUUID();
   const project: ProjectProcess = {
     id, githubRepo, branch,
     framework: null,
@@ -137,6 +140,7 @@ export async function startProject(id: string, githubRepo: string, branch: strin
     status: 'starting',
     logs: [],
     workDir,
+    accessToken,
   };
   projects.set(id, project);
 
@@ -197,9 +201,16 @@ export async function startProject(id: string, githubRepo: string, branch: strin
     const layrCli = join(process.cwd(), '..', 'cli', 'dist', 'cli.js');
     addLog(project, `Starting layrr proxy on port ${proxyPort}...`);
     const agent = process.env.LAYRR_AGENT || 'pi-mono';
+    const proxyEnv: Record<string, string> = {
+      ...process.env as Record<string, string>,
+      LAYRR_ACCESS_TOKEN: accessToken,
+    };
+    if (sharePassword) proxyEnv.LAYRR_SHARE_PASSWORD = sharePassword;
+
     project.proxyProcess = spawn('node', [layrCli, '--port', String(devPort), '--proxy-port', String(proxyPort), '--no-open', '--agent', agent], {
       cwd: workDir,
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: proxyEnv,
       detached: true,
     });
 
@@ -231,7 +242,7 @@ export async function startProject(id: string, githubRepo: string, branch: strin
   }
 }
 
-export async function createFromTemplate(id: string, name: string, prompt: string, gitUsername?: string, gitEmail?: string): Promise<ProjectProcess> {
+export async function createFromTemplate(id: string, name: string, prompt: string, gitUsername?: string, gitEmail?: string, sharePassword?: string): Promise<ProjectProcess> {
   const existing = projects.get(id);
   if (existing && existing.status === 'running') return existing;
   if (existing) {
@@ -244,6 +255,7 @@ export async function createFromTemplate(id: string, name: string, prompt: strin
   const workDir = join(WORKSPACE_DIR, id);
   const templateDir = join(process.cwd(), 'templates', 'nextjs-shadcn');
 
+  const accessToken = randomUUID();
   const project: ProjectProcess = {
     id, githubRepo: '', branch: 'main',
     framework: 'nextjs',
@@ -252,6 +264,7 @@ export async function createFromTemplate(id: string, name: string, prompt: strin
     status: 'starting',
     logs: [],
     workDir,
+    accessToken,
   };
   projects.set(id, project);
 
@@ -297,9 +310,16 @@ export async function createFromTemplate(id: string, name: string, prompt: strin
     const layrCli = join(process.cwd(), '..', 'cli', 'dist', 'cli.js');
     const agent = process.env.LAYRR_AGENT || 'pi-mono';
     addLog(project, `Starting layrr proxy on port ${proxyPort}...`);
+    const templateProxyEnv: Record<string, string> = {
+      ...process.env as Record<string, string>,
+      LAYRR_ACCESS_TOKEN: accessToken,
+    };
+    if (sharePassword) templateProxyEnv.LAYRR_SHARE_PASSWORD = sharePassword;
+
     project.proxyProcess = spawn('node', [layrCli, '--port', String(devPort), '--proxy-port', String(proxyPort), '--no-open', '--agent', agent], {
       cwd: workDir,
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: templateProxyEnv,
       detached: true,
     });
     project.proxyProcess.stdout?.on('data', (d: Buffer) => addLog(project, `[proxy] ${d.toString().trim()}`));

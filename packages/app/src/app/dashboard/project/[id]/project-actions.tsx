@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { RotateCcw, GitBranch, Loader2, AlertTriangle } from "lucide-react";
+import { RotateCcw, GitBranch, Loader2, AlertTriangle, Lock, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 function GithubIcon({ className }: { className?: string }) {
@@ -12,13 +12,17 @@ function GithubIcon({ className }: { className?: string }) {
   );
 }
 
-export function ProjectActions({ projectId, branch }: { projectId: string; branch: string }) {
+export function ProjectActions({ projectId, branch, sharePassword: initialPassword }: { projectId: string; branch: string; sharePassword?: string | null }) {
   const [showPush, setShowPush] = useState(false);
   const [showFreshClone, setShowFreshClone] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const [pushBranch, setPushBranch] = useState(`layrr/${branch}`);
   const [pushing, setPushing] = useState(false);
   const [cloning, setCloning] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [sharePass, setSharePass] = useState(initialPassword || '');
+  const [savingPass, setSavingPass] = useState(false);
+  const [passSaved, setPassSaved] = useState(false);
 
   async function handlePush() {
     setPushing(true);
@@ -162,6 +166,72 @@ export function ProjectActions({ projectId, branch }: { projectId: string; branc
                     Delete & Re-clone
                   </button>
                   <ResultMessage result={result} />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Share password */}
+        <div>
+          <button
+            onClick={() => { setShowShare(!showShare); setShowPush(false); setShowFreshClone(false); setResult(null); setPassSaved(false); }}
+            className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-secondary"
+          >
+            <Lock className="h-4 w-4 text-muted-foreground" />
+            <div className="flex-1">
+              <p className="text-xs font-medium">Share password</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                {initialPassword ? "Password protected" : "Set a password to allow others to access the editor"}
+              </p>
+            </div>
+          </button>
+
+          <AnimatePresence>
+            {showShare && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="px-3 pb-3 pt-2 space-y-3">
+                  <div>
+                    <label className="text-[10px] text-muted-foreground mb-1 block">Password</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={sharePass}
+                        onChange={(e) => { setSharePass(e.target.value); setPassSaved(false); }}
+                        className="flex-1 h-8 px-3 rounded-md border border-input bg-secondary text-xs outline-none focus:border-foreground/20 transition-colors"
+                        placeholder="Leave empty to disable sharing"
+                      />
+                      <button
+                        onClick={async () => {
+                          setSavingPass(true);
+                          setPassSaved(false);
+                          try {
+                            await fetch(`/api/projects/${projectId}/share`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ password: sharePass }),
+                            });
+                            setPassSaved(true);
+                          } catch {}
+                          setSavingPass(false);
+                        }}
+                        disabled={savingPass}
+                        className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded-md text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                      >
+                        {savingPass ? <Loader2 className="h-3 w-3 animate-spin" /> : passSaved ? <Check className="h-3 w-3" /> : null}
+                        {passSaved ? "Saved" : "Save"}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    {sharePass ? "Anyone with this password can access the editor. Restart the editor to apply changes." : "No password set — only you can access the editor."}
+                  </p>
                 </div>
               </motion.div>
             )}

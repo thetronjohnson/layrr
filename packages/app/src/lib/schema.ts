@@ -20,6 +20,7 @@ export const projects = sqliteTable("projects", {
   sourceType: text("source_type", { enum: ["github", "template"] }).default("github").notNull(),
   initialPrompt: text("initial_prompt"),
   framework: text("framework"),
+  sharePassword: text("share_password"),
   containerStatus: text("container_status", {
     enum: ["CREATING", "STARTING", "RUNNING", "STOPPING", "STOPPED", "ERROR"],
   }).default("STOPPED").notNull(),

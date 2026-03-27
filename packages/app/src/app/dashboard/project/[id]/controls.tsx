@@ -17,9 +17,10 @@ export function ContainerControls({
   const [containerStatus, setContainerStatus] = useState(status);
   const [loading, setLoading] = useState(false);
   const [proxyPort, setProxyPort] = useState<number | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [editCount, setEditCount] = useState(initialEditCount);
 
-  const editorUrl = proxyPort ? `http://localhost:${proxyPort}` : null;
+  const editorUrl = proxyPort ? `http://localhost:${proxyPort}?token=${accessToken || ''}` : null;
   const isRunning = containerStatus === "RUNNING";
   const isStarting = containerStatus === "STARTING" || containerStatus === "CREATING";
 
@@ -40,6 +41,7 @@ export function ContainerControls({
         if (!active) return;
         setContainerStatus(data.status);
         if (data.proxyPort) setProxyPort(data.proxyPort);
+        if (data.accessToken) setAccessToken(data.accessToken);
         if (data.editCount !== undefined) setEditCount(data.editCount);
       } catch {}
     }
@@ -114,7 +116,7 @@ export function ContainerControls({
             </div>
             <div>
               <p className="text-xs font-medium">Editor is running</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">{editorUrl}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">http://localhost:{proxyPort}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
