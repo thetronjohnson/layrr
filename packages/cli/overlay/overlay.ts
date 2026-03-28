@@ -3,6 +3,10 @@
   (window as any).__LAYRR_LOADED__ = true;
 
   const WS_PORT = location.port || (window as any).__LAYRR_WS_PORT__ || 4567;
+  // Detect path prefix when accessed via /preview/{slug}/ proxy
+  const previewMatch = location.pathname.match(/^(\/preview\/[^/]+)/);
+  const PATH_PREFIX = previewMatch ? previewMatch[1] : '';
+  (window as any).__LAYRR_PATH_PREFIX__ = PATH_PREFIX;
 
   const { L } = await import('./constants');
   const { ensureStyles } = await import('./styles');
@@ -209,7 +213,7 @@
     stopPolling();
     app.pollTimer = setInterval(async () => {
       try {
-        const resp = await fetch('/__layrr__/edit-status');
+        const resp = await fetch(`${PATH_PREFIX}/__layrr__/edit-status`);
         const data = await resp.json();
         if (data.success !== null && data.timestamp > app.lastEditTimestamp) {
           app.lastEditTimestamp = data.timestamp;
@@ -256,7 +260,8 @@
 
   // ---- WebSocket ----
   function connectWs() {
-    app.ws = new WebSocket(`ws://${location.hostname}:${WS_PORT}/__layrr__/ws`);
+    const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    app.ws = new WebSocket(`${wsProto}//${location.hostname}:${WS_PORT}${PATH_PREFIX}/__layrr__/ws`);
     app.ws.onopen = () => { app.connected = true; app.ws!.send(JSON.stringify({ type: 'overlay-ready' })); };
     app.ws.onmessage = (ev) => {
       try {
@@ -401,7 +406,7 @@
     connectWs();
 
     // Check for missed edit results
-    fetch('/__layrr__/edit-status').then(r => r.json()).then(data => {
+    fetch(`${PATH_PREFIX}/__layrr__/edit-status`).then(r => r.json()).then(data => {
       if (data.success !== null && data.timestamp > app.lastEditTimestamp) {
         app.lastEditTimestamp = data.timestamp;
         onEditResult(data);

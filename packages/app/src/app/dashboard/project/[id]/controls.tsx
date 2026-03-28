@@ -7,11 +7,13 @@ export function ContainerControls({
   projectId,
   status,
   framework,
+  slug,
   initialEditCount = 0,
 }: {
   projectId: string;
   status: string;
   framework: string | null;
+  slug?: string | null;
   initialEditCount?: number;
 }) {
   const [containerStatus, setContainerStatus] = useState(status);
@@ -20,7 +22,12 @@ export function ContainerControls({
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [editCount, setEditCount] = useState(initialEditCount);
 
-  const editorUrl = proxyPort ? `http://localhost:${proxyPort}?token=${accessToken || ''}` : null;
+  const isProduction = typeof window !== 'undefined' && location.hostname !== 'localhost';
+  const editorUrl = proxyPort
+    ? isProduction && slug
+      ? `${location.origin}/preview/${slug}?token=${accessToken || ''}`
+      : `http://localhost:${proxyPort}?token=${accessToken || ''}`
+    : null;
   const isRunning = containerStatus === "RUNNING";
   const isStarting = containerStatus === "STARTING" || containerStatus === "CREATING";
 

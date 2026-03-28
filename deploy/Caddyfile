@@ -1,9 +1,6 @@
-# Dashboard
 app.layrr.dev {
-	reverse_proxy localhost:3000
-}
+    @preview path /preview/*
+    reverse_proxy @preview localhost:8787
 
-# Project proxy subdomains — Hono resolves slug → container port
-*.proxy.layrr.dev {
-	reverse_proxy localhost:8787
+    reverse_proxy localhost:3000
 }

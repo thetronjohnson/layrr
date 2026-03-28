@@ -4,6 +4,7 @@ dotenv.config({ path: join(process.cwd(), '..', '..', '.env') });
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
+import { createServer, request as httpRequest, type IncomingMessage } from 'http';
 import { startProject, stopProject, getProject, getProjectBySlug, getProjectLogs, freshClone, pushChanges, getEditHistory, getEditCount, createFromTemplate, linkGithubRepo } from './projects.js';
 
 const app = new Hono();
@@ -11,7 +12,51 @@ const PORT = Number(process.env.SERVER_PORT || 8787);
 
 app.use('*', cors());
 
-// Auth middleware
+// ── Preview proxy (no auth required) ──
+// Handles /preview/{slug}/* — proxies to the project's container port
+app.all('/preview/:slug/*', async (c) => {
+  const slug = c.req.param('slug');
+  const project = getProjectBySlug(slug);
+  if (!project) return c.text('Project not found', 404);
+
+  // Strip /preview/{slug} prefix
+  const remaining = c.req.path.replace(`/preview/${slug}`, '') || '/';
+  const url = new URL(c.req.url);
+  const targetUrl = `http://localhost:${project.proxyPort}${remaining}${url.search}`;
+
+  try {
+    const headers: Record<string, string> = {};
+    c.req.raw.headers.forEach((value, key) => {
+      if (key !== 'host') headers[key] = value;
+    });
+
+    const body = c.req.method !== 'GET' && c.req.method !== 'HEAD'
+      ? await c.req.raw.text()
+      : undefined;
+
+    const resp = await fetch(targetUrl, {
+      method: c.req.method,
+      headers,
+      body,
+    });
+
+    const respHeaders = new Headers();
+    resp.headers.forEach((value, key) => {
+      if (key !== 'content-encoding' && key !== 'content-length') {
+        respHeaders.set(key, value);
+      }
+    });
+
+    return new Response(resp.body, {
+      status: resp.status,
+      headers: respHeaders,
+    });
+  } catch (err: any) {
+    return c.text(`Proxy error: ${err.message}`, 502);
+  }
+});
+
+// ── Auth middleware (for API routes only) ──
 app.use('*', async (c, next) => {
   const token = c.req.header('Authorization')?.replace('Bearer ', '');
   const expected = process.env.SERVER_SECRET || 'dev-secret';
@@ -127,9 +172,53 @@ app.get('/projects/:id/logs', (c) => {
 
 import { cleanupOrphanProcesses } from './projects.js';
 
+// Helper: resolve slug from upgrade request path
+function resolvePreviewUpgrade(url: string): { slug: string; port: number; targetPath: string } | null {
+  const match = url.match(/^\/preview\/([^/]+)(\/.*)?$/);
+  if (!match) return null;
+  const slug = match[1];
+  const project = getProjectBySlug(slug);
+  if (!project) return null;
+  const targetPath = match[2] || '/';
+  return { slug, port: project.proxyPort, targetPath };
+}
+
 // Kill orphan processes from previous runs before starting
 cleanupOrphanProcesses().then(() => {
-  serve({ fetch: app.fetch, port: PORT }, () => {
+  const server = serve({ fetch: app.fetch, port: PORT }, () => {
     console.log(`[layrr-server] Running on http://localhost:${PORT}`);
+  });
+
+  // Handle WebSocket upgrades for /preview/{slug}/*
+  (server as any).on('upgrade', (req: IncomingMessage, socket: any, head: Buffer) => {
+    const resolved = resolvePreviewUpgrade(req.url || '');
+    if (!resolved) {
+      socket.destroy();
+      return;
+    }
+
+    const proxyReq = httpRequest({
+      hostname: 'localhost',
+      port: resolved.port,
+      path: resolved.targetPath,
+      method: 'GET',
+      headers: { ...req.headers, host: `localhost:${resolved.port}` },
+    });
+
+    proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
+      socket.write(
+        `HTTP/1.1 ${proxyRes.statusCode || 101} ${proxyRes.statusMessage || 'Switching Protocols'}\r\n` +
+        Object.entries(proxyRes.headers).map(([k, v]) => `${k}: ${v}`).join('\r\n') +
+        '\r\n\r\n'
+      );
+      if (proxyHead.length) socket.write(proxyHead);
+      proxySocket.pipe(socket);
+      socket.pipe(proxySocket);
+    });
+
+    proxyReq.on('error', () => socket.destroy());
+    socket.on('error', () => proxyReq.destroy());
+
+    proxyReq.end();
   });
 });

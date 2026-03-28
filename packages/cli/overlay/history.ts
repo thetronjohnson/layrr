@@ -9,7 +9,8 @@ export async function fetchAndRenderHistory() {
   const container = document.getElementById(`${L}-history`);
   if (!container) return;
   try {
-    const resp = await fetch('/__layrr__/history');
+    const prefix = (window as any).__LAYRR_PATH_PREFIX__ || '';
+    const resp = await fetch(`${prefix}/__layrr__/history`);
     const data: { head: string; commits: Array<{ hash: string; message: string; timeAgo: string }> } = await resp.json();
     if (data.commits.length === 0) {
       container.innerHTML = `<div class="${L}-hh"><span>History</span><button class="${L}-hh-close"><i class="icon-x"></i></button></div><div class="${L}-he-empty">No edits yet</div>`;

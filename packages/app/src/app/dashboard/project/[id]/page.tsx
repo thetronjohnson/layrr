@@ -92,6 +92,7 @@ export default async function ProjectPage({
             projectId={project.id}
             status={project.containerStatus}
             framework={project.framework}
+            slug={project.slug}
             initialEditCount={0}
           />
         </div>
