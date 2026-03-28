@@ -2,7 +2,7 @@
   if ((window as any).__LAYRR_LOADED__) return;
   (window as any).__LAYRR_LOADED__ = true;
 
-  const WS_PORT = location.port || (window as any).__LAYRR_WS_PORT__ || 4567;
+  const WS_PORT = location.port; // empty on standard ports (443/80) — that's correct
   // Detect path prefix when accessed via /preview/{slug}/ proxy
   const previewMatch = location.pathname.match(/^(\/preview\/[^/]+)/);
   const PATH_PREFIX = previewMatch ? previewMatch[1] : '';
@@ -261,7 +261,8 @@
   // ---- WebSocket ----
   function connectWs() {
     const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    app.ws = new WebSocket(`${wsProto}//${location.hostname}:${WS_PORT}${PATH_PREFIX}/__layrr__/ws`);
+    const wsHost = WS_PORT ? `${location.hostname}:${WS_PORT}` : location.hostname;
+    app.ws = new WebSocket(`${wsProto}//${wsHost}${PATH_PREFIX}/__layrr__/ws`);
     app.ws.onopen = () => { app.connected = true; app.ws!.send(JSON.stringify({ type: 'overlay-ready' })); };
     app.ws.onmessage = (ev) => {
       try {
