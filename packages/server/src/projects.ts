@@ -343,20 +343,13 @@ async function startProjectIncus(id: string, githubRepo: string, branch: string,
     addLog(project, `Starting proxy on internal port ${internalProxyPort}...`);
     incusExec(containerName, `cd ${workDir} && nohup sh -c '${proxyEnvVars} node /opt/layrr/dist/cli.js --port ${internalDevPort} --proxy-port ${internalProxyPort} --no-open --agent ${agent}' > /tmp/proxy-${id}.log 2>&1 & echo $! > ${workDir}/.layrr-proxy.pid`);
 
-    // Wait for proxy
-    for (let i = 0; i < 30; i++) {
-      try {
-        incusExec(containerName, `curl -sf http://localhost:${internalProxyPort} > /dev/null`, 5000);
-        break;
-      } catch {
-        if (i === 29) throw new Error('Proxy timed out');
-        await new Promise(r => setTimeout(r, 2000));
-      }
-    }
-
-    // Add port forward: host port → container proxy port
+    // Add port forward first, then poll from host
     const deviceName = `proj-${id.slice(0, 8)}`;
     execSync(`incus config device add ${containerName} ${deviceName} proxy listen=tcp:0.0.0.0:${hostPort} connect=tcp:127.0.0.1:${internalProxyPort}`, { stdio: 'pipe' });
+
+    // Wait for proxy via host port
+    addLog(project, `Waiting for proxy on host port ${hostPort}...`);
+    await waitForPort(hostPort, 60000);
 
     project.status = 'running';
     addLog(project, `Ready! Host port: ${hostPort}, Internal proxy: ${internalProxyPort}`);
@@ -546,19 +539,12 @@ async function createFromTemplateIncus(id: string, name: string, prompt: string,
     const proxyEnvVars = `LAYRR_ACCESS_TOKEN=${accessToken}${sharePassword ? ` LAYRR_SHARE_PASSWORD=${sharePassword}` : ''}${process.env.OPENROUTER_API_KEY ? ` OPENROUTER_API_KEY=${process.env.OPENROUTER_API_KEY}` : ''}`;
     incusExec(containerName, `cd ${workDir} && nohup sh -c '${proxyEnvVars} node /opt/layrr/dist/cli.js --port ${internalDevPort} --proxy-port ${internalProxyPort} --no-open --agent ${agent}' > /tmp/proxy-${id}.log 2>&1 & echo $! > ${workDir}/.layrr-proxy.pid`);
 
-    for (let i = 0; i < 30; i++) {
-      try {
-        incusExec(containerName, `curl -sf http://localhost:${internalProxyPort} > /dev/null`, 5000);
-        break;
-      } catch {
-        if (i === 29) throw new Error('Proxy timed out');
-        await new Promise(r => setTimeout(r, 2000));
-      }
-    }
-
-    // Add port forward
+    // Add port forward first, then poll from host
     const deviceName = `proj-${id.slice(0, 8)}`;
     execSync(`incus config device add ${containerName} ${deviceName} proxy listen=tcp:0.0.0.0:${hostPort} connect=tcp:127.0.0.1:${internalProxyPort}`, { stdio: 'pipe' });
+
+    addLog(project, `Waiting for proxy on host port ${hostPort}...`);
+    await waitForPort(hostPort, 60000);
 
     // Run initial prompt
     if (prompt) {
