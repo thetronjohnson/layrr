@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 
 const INCUS_MODE = process.env.LAYRR_MODE === 'incus';
 const DOCKER_MODE = process.env.LAYRR_MODE === 'docker';
+const BWRAP_MODE = process.env.LAYRR_MODE === 'bwrap';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(process.env.HOME || '/tmp', '.layrr', 'workspaces');
 const INCUS_IMAGE = process.env.LAYRR_INCUS_IMAGE || 'layrr-workspace';
 
@@ -123,6 +124,41 @@ function killProcess(proc: ChildProcess | null) {
   setTimeout(() => {
     try { proc.kill('SIGKILL'); } catch {}
   }, 5000);
+}
+
+// ── Bwrap helpers ──
+
+function bwrapArgs(workDir: string): string[] {
+  const args = [
+    '--ro-bind', '/usr', '/usr',
+    '--ro-bind', '/bin', '/bin',
+    '--ro-bind', '/lib', '/lib',
+    '--ro-bind', '/etc/resolv.conf', '/etc/resolv.conf',
+    '--ro-bind', '/etc/ssl', '/etc/ssl',
+    '--bind', workDir, workDir,
+    '--tmpfs', '/tmp',
+    '--dev', '/dev',
+    '--proc', '/proc',
+    '--unshare-pid',
+    '--die-with-parent',
+    '--chdir', workDir,
+  ];
+  // /lib64 may not exist on all systems
+  if (existsSync('/lib64')) args.push('--ro-bind', '/lib64', '/lib64');
+  // /etc/ca-certificates may not exist
+  if (existsSync('/etc/ca-certificates')) args.push('--ro-bind', '/etc/ca-certificates', '/etc/ca-certificates');
+  // Allow access to the layrr CLI (for the proxy process)
+  const cliDir = join(process.cwd(), '..', 'cli');
+  if (existsSync(cliDir)) args.push('--ro-bind', cliDir, cliDir);
+  return args;
+}
+
+function spawnSandboxed(cmd: string, args: string[], opts: any, workDir: string): ChildProcess {
+  if (BWRAP_MODE) {
+    const bwrap = bwrapArgs(workDir);
+    return spawn('bwrap', [...bwrap, cmd, ...args], opts);
+  }
+  return spawn(cmd, args, opts);
 }
 
 // ── Incus helpers ──
@@ -414,12 +450,12 @@ async function startProjectLocal(id: string, githubRepo: string, branch: string,
 
     const devCmd = getDevCommand(project.framework, pm, devPort);
     addLog(project, `Starting dev server: ${devCmd.cmd} ${devCmd.args.join(' ')}`);
-    project.devProcess = spawn(devCmd.cmd, devCmd.args, {
+    project.devProcess = spawnSandboxed(devCmd.cmd, devCmd.args, {
       cwd: workDir,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, PORT: String(devPort), HOST: '0.0.0.0' },
       detached: true,
-    });
+    }, workDir);
     project.devProcess.stdout?.on('data', (d: Buffer) => addLog(project, d.toString().trim()));
     project.devProcess.stderr?.on('data', (d: Buffer) => addLog(project, d.toString().trim()));
     project.devProcess.on('exit', (code) => {
@@ -435,9 +471,9 @@ async function startProjectLocal(id: string, githubRepo: string, branch: string,
     const proxyEnv: Record<string, string> = { ...process.env as Record<string, string>, LAYRR_ACCESS_TOKEN: accessToken };
     if (sharePassword) proxyEnv.LAYRR_SHARE_PASSWORD = sharePassword;
 
-    project.proxyProcess = spawn('node', [layrCli, '--port', String(devPort), '--proxy-port', String(proxyPort), '--no-open', '--agent', agent], {
+    project.proxyProcess = spawnSandboxed('node', [layrCli, '--port', String(devPort), '--proxy-port', String(proxyPort), '--no-open', '--agent', agent], {
       cwd: workDir, stdio: ['ignore', 'pipe', 'pipe'], env: proxyEnv, detached: true,
-    });
+    }, workDir);
     project.proxyProcess.stdout?.on('data', (d: Buffer) => addLog(project, `[proxy] ${d.toString().trim()}`));
     project.proxyProcess.stderr?.on('data', (d: Buffer) => addLog(project, `[proxy] ${d.toString().trim()}`));
     project.proxyProcess.on('exit', (code) => {
@@ -603,10 +639,10 @@ async function createFromTemplateLocal(id: string, name: string, prompt: string,
     execSync('pnpm install', { cwd: workDir, stdio: 'pipe', timeout: 120000 });
 
     const devCmd = getDevCommand('nextjs', 'pnpm', devPort);
-    project.devProcess = spawn(devCmd.cmd, devCmd.args, {
+    project.devProcess = spawnSandboxed(devCmd.cmd, devCmd.args, {
       cwd: workDir, stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, PORT: String(devPort), HOST: '0.0.0.0' }, detached: true,
-    });
+    }, workDir);
     project.devProcess.stdout?.on('data', (d: Buffer) => addLog(project, d.toString().trim()));
     project.devProcess.stderr?.on('data', (d: Buffer) => addLog(project, d.toString().trim()));
     project.devProcess.on('exit', () => { if (project.status === 'running') { project.status = 'error'; releasePort(devPort, usedDevPorts); } });
@@ -618,9 +654,9 @@ async function createFromTemplateLocal(id: string, name: string, prompt: string,
     const proxyEnv: Record<string, string> = { ...process.env as Record<string, string>, LAYRR_ACCESS_TOKEN: accessToken };
     if (sharePassword) proxyEnv.LAYRR_SHARE_PASSWORD = sharePassword;
 
-    project.proxyProcess = spawn('node', [layrCli, '--port', String(devPort), '--proxy-port', String(proxyPort), '--no-open', '--agent', agent], {
+    project.proxyProcess = spawnSandboxed('node', [layrCli, '--port', String(devPort), '--proxy-port', String(proxyPort), '--no-open', '--agent', agent], {
       cwd: workDir, stdio: ['ignore', 'pipe', 'pipe'], env: proxyEnv, detached: true,
-    });
+    }, workDir);
     project.proxyProcess.stdout?.on('data', (d: Buffer) => addLog(project, `[proxy] ${d.toString().trim()}`));
     project.proxyProcess.stderr?.on('data', (d: Buffer) => addLog(project, `[proxy] ${d.toString().trim()}`));
     project.proxyProcess.on('exit', () => { if (project.status === 'running') { project.status = 'error'; releasePort(proxyPort, usedProxyPorts); } });
