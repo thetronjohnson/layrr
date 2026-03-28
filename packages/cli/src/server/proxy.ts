@@ -138,16 +138,10 @@ export async function startProxy(
     if (ACCESS_TOKEN) {
       const url = new URL(req.url || '/', `http://localhost`);
       if (url.searchParams.get('token') === ACCESS_TOKEN) {
-        // Valid token in URL — set cookie and redirect to clean URL
+        // Valid token in URL — set cookie and continue (don't redirect, breaks behind reverse proxy)
         setAuthCookie(res);
-        url.searchParams.delete('token');
-        const cleanPath = url.pathname + (url.search || '');
-        res.writeHead(302, { Location: cleanPath });
-        res.end();
-        return;
-      }
-
-      if (!isAuthenticated(req)) {
+        // Fall through to serve the page with the cookie set
+      } else if (!isAuthenticated(req)) {
         if (SHARE_PASSWORD) {
           servePasswordGate(res);
         } else {
