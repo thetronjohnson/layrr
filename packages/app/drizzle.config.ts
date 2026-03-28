@@ -5,6 +5,6 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "sqlite",
   dbCredentials: {
-    url: "./layrr.db",
+    url: process.env.DATABASE_PATH || "./layrr.db",
   },
 });

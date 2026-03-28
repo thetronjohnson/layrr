@@ -1,44 +1,55 @@
 #!/bin/bash
 set -e
 
+# Run as root on the Hetzner server
+# Usage: bash /opt/layrr/deploy/deploy.sh
+
 cd /opt/layrr
 
 echo "=== Deploying Layrr ==="
 
 # Pull latest
-echo "Pulling latest code..."
+echo "[1/7] Pulling latest code..."
 git pull
 
 # Install dependencies
-echo "Installing dependencies..."
-pnpm install
+echo "[2/7] Installing dependencies..."
+su - layrr -c "cd /opt/layrr && pnpm install"
 
 # Build all packages
-echo "Building..."
-pnpm build
+echo "[3/7] Building..."
+su - layrr -c "cd /opt/layrr && pnpm build"
 
 # Build Docker image
-echo "Building Docker container image..."
+echo "[4/7] Building Docker container image..."
 docker build -t layrr-container -f packages/container/Dockerfile .
 
 # Push DB schema
-echo "Pushing database schema..."
-cd packages/app && npx drizzle-kit push && cd ../..
+echo "[5/7] Pushing database schema..."
+su - layrr -c "cd /opt/layrr/packages/app && DATABASE_PATH=/var/lib/layrr/layrr.db npx drizzle-kit push"
 
 # Install systemd services
-echo "Installing services..."
+echo "[6/7] Installing services..."
 cp deploy/layrr-server.service /etc/systemd/system/
 cp deploy/layrr-app.service /etc/systemd/system/
+cp deploy/caddy.service /etc/systemd/system/ 2>/dev/null || true
 systemctl daemon-reload
 
 # Restart services
-echo "Restarting services..."
+echo "[7/7] Restarting services..."
 systemctl restart layrr-server
 systemctl restart layrr-app
-systemctl enable layrr-server layrr-app
+systemctl restart caddy
+systemctl enable layrr-server layrr-app caddy
 
 echo ""
 echo "=== Deploy complete ==="
+echo ""
+systemctl is-active --quiet caddy && echo "  ✓ Caddy running" || echo "  ✗ Caddy failed"
+systemctl is-active --quiet layrr-server && echo "  ✓ Server running" || echo "  ✗ Server failed"
+systemctl is-active --quiet layrr-app && echo "  ✓ App running" || echo "  ✗ App failed"
+echo ""
 echo "  Dashboard: https://app.layrr.dev"
-echo "  Server:    systemctl status layrr-server"
-echo "  App:       systemctl status layrr-app"
+echo "  Logs:      journalctl -u layrr-server -f"
+echo "             journalctl -u layrr-app -f"
+echo "             journalctl -u caddy -f"
