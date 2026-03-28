@@ -131,7 +131,7 @@ function incusContainerName(userId: string): string {
   return `layrr-${userId}`;
 }
 
-function incusExec(containerName: string, cmd: string, timeout = 120000): string {
+function incusExec(containerName: string, cmd: string, timeout = 300000): string {
   return execSync(`incus exec ${containerName} -- sh -c "${cmd.replace(/"/g, '\\"')}"`, {
     encoding: 'utf-8',
     timeout,
@@ -276,7 +276,7 @@ async function startProjectIncus(id: string, githubRepo: string, branch: string,
     } catch {
       if (githubRepo && githubToken) {
         addLog(project, `Cloning ${githubRepo}...`);
-        incusExec(containerName, `git clone --depth 1 --branch ${branch} https://x-access-token:${githubToken}@github.com/${githubRepo}.git ${workDir}`, 120000);
+        incusExec(containerName, `git clone --depth 1 --branch ${branch} https://x-access-token:${githubToken}@github.com/${githubRepo}.git ${workDir}`, 600000);
       } else {
         throw new Error('No workspace found and no GitHub repo to clone');
       }
