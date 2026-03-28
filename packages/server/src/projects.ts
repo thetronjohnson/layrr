@@ -345,6 +345,7 @@ async function startProjectIncus(id: string, githubRepo: string, branch: string,
 
     // Add port forward first, then poll from host
     const deviceName = `proj-${id.slice(0, 8)}`;
+    try { execSync(`incus config device remove ${containerName} ${deviceName}`, { stdio: 'pipe' }); } catch {}
     execSync(`incus config device add ${containerName} ${deviceName} proxy listen=tcp:0.0.0.0:${hostPort} connect=tcp:127.0.0.1:${internalProxyPort}`, { stdio: 'pipe' });
 
     // Wait for proxy via host port
@@ -541,6 +542,7 @@ async function createFromTemplateIncus(id: string, name: string, prompt: string,
 
     // Add port forward first, then poll from host
     const deviceName = `proj-${id.slice(0, 8)}`;
+    try { execSync(`incus config device remove ${containerName} ${deviceName}`, { stdio: 'pipe' }); } catch {}
     execSync(`incus config device add ${containerName} ${deviceName} proxy listen=tcp:0.0.0.0:${hostPort} connect=tcp:127.0.0.1:${internalProxyPort}`, { stdio: 'pipe' });
 
     addLog(project, `Waiting for proxy on host port ${hostPort}...`);
