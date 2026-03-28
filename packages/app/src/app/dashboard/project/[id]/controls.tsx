@@ -25,7 +25,7 @@ export function ContainerControls({
   const isProduction = typeof window !== 'undefined' && location.hostname !== 'localhost';
   const editorUrl = proxyPort
     ? isProduction && slug
-      ? `${location.origin}/preview/${slug}?token=${accessToken || ''}`
+      ? `https://${slug}.preview.layrr.dev?token=${accessToken || ''}`
       : `http://localhost:${proxyPort}?token=${accessToken || ''}`
     : null;
   const isRunning = containerStatus === "RUNNING";

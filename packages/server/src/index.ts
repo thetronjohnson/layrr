@@ -13,47 +13,55 @@ const PORT = Number(process.env.SERVER_PORT || 8787);
 app.use('*', cors());
 
 // ── Preview proxy (no auth required) ──
-// Handles /preview/{slug}/* — proxies to the project's container port
-app.all('/preview/:slug/*', async (c) => {
-  const slug = c.req.param('slug');
-  const project = getProjectBySlug(slug);
-  if (!project) return c.text('Project not found', 404);
+// Handles subdomain-based routing: {slug}.preview.layrr.dev → container
+// Also handles path-based routing: /preview/{slug}/* (for local dev)
+const PREVIEW_DOMAIN = process.env.LAYRR_PROXY_DOMAIN || ''; // e.g. "preview.layrr.dev"
 
-  // Strip /preview/{slug} prefix
-  const remaining = c.req.path.replace(`/preview/${slug}`, '') || '/';
-  const url = new URL(c.req.url);
-  const targetUrl = `http://localhost:${project.proxyPort}${remaining}${url.search}`;
+app.use('*', async (c, next) => {
+  const host = c.req.header('host') || '';
 
-  try {
-    const headers: Record<string, string> = {};
-    c.req.raw.headers.forEach((value, key) => {
-      if (key !== 'host') headers[key] = value;
-    });
+  // Subdomain routing: {slug}.preview.layrr.dev
+  if (PREVIEW_DOMAIN && host.endsWith(`.${PREVIEW_DOMAIN}`)) {
+    const slug = host.replace(`.${PREVIEW_DOMAIN}`, '').split(':')[0];
+    const project = getProjectBySlug(slug);
+    if (!project) return c.text('Project not found', 404);
 
-    const body = c.req.method !== 'GET' && c.req.method !== 'HEAD'
-      ? await c.req.raw.text()
-      : undefined;
+    const url = new URL(c.req.url);
+    const targetUrl = `http://localhost:${project.proxyPort}${url.pathname}${url.search}`;
 
-    const resp = await fetch(targetUrl, {
-      method: c.req.method,
-      headers,
-      body,
-    });
+    try {
+      const headers: Record<string, string> = {};
+      c.req.raw.headers.forEach((value, key) => {
+        if (key !== 'host') headers[key] = value;
+      });
 
-    const respHeaders = new Headers();
-    resp.headers.forEach((value, key) => {
-      if (key !== 'content-encoding' && key !== 'content-length') {
-        respHeaders.set(key, value);
-      }
-    });
+      const body = c.req.method !== 'GET' && c.req.method !== 'HEAD'
+        ? await c.req.raw.text()
+        : undefined;
 
-    return new Response(resp.body, {
-      status: resp.status,
-      headers: respHeaders,
-    });
-  } catch (err: any) {
-    return c.text(`Proxy error: ${err.message}`, 502);
+      const resp = await fetch(targetUrl, {
+        method: c.req.method,
+        headers,
+        body,
+      });
+
+      const respHeaders = new Headers();
+      resp.headers.forEach((value, key) => {
+        if (key !== 'content-encoding' && key !== 'content-length') {
+          respHeaders.set(key, value);
+        }
+      });
+
+      return new Response(resp.body, {
+        status: resp.status,
+        headers: respHeaders,
+      });
+    } catch (err: any) {
+      return c.text(`Proxy error: ${err.message}`, 502);
+    }
   }
+
+  return next();
 });
 
 // ── Auth middleware (for API routes only) ──
@@ -172,15 +180,24 @@ app.get('/projects/:id/logs', (c) => {
 
 import { cleanupOrphanProcesses } from './projects.js';
 
-// Helper: resolve slug from upgrade request path
-function resolvePreviewUpgrade(url: string): { slug: string; port: number; targetPath: string } | null {
-  const match = url.match(/^\/preview\/([^/]+)(\/.*)?$/);
+// Helper: resolve preview proxy from upgrade request (subdomain or path)
+function resolvePreviewUpgrade(req: IncomingMessage): { port: number; targetPath: string } | null {
+  const host = req.headers.host || '';
+
+  // Subdomain: {slug}.preview.layrr.dev
+  if (PREVIEW_DOMAIN && host.includes(`.${PREVIEW_DOMAIN}`)) {
+    const slug = host.replace(`.${PREVIEW_DOMAIN}`, '').split(':')[0];
+    const project = getProjectBySlug(slug);
+    if (!project) return null;
+    return { port: project.proxyPort, targetPath: req.url || '/' };
+  }
+
+  // Path: /preview/{slug}/*
+  const match = (req.url || '').match(/^\/preview\/([^/]+)(\/.*)?$/);
   if (!match) return null;
-  const slug = match[1];
-  const project = getProjectBySlug(slug);
+  const project = getProjectBySlug(match[1]);
   if (!project) return null;
-  const targetPath = match[2] || '/';
-  return { slug, port: project.proxyPort, targetPath };
+  return { port: project.proxyPort, targetPath: match[2] || '/' };
 }
 
 // Kill orphan processes from previous runs before starting
@@ -189,9 +206,9 @@ cleanupOrphanProcesses().then(() => {
     console.log(`[layrr-server] Running on http://localhost:${PORT}`);
   });
 
-  // Handle WebSocket upgrades for /preview/{slug}/*
+  // Handle WebSocket upgrades for preview proxy (subdomain or path)
   (server as any).on('upgrade', (req: IncomingMessage, socket: any, head: Buffer) => {
-    const resolved = resolvePreviewUpgrade(req.url || '');
+    const resolved = resolvePreviewUpgrade(req);
     if (!resolved) {
       socket.destroy();
       return;
@@ -200,7 +217,7 @@ cleanupOrphanProcesses().then(() => {
     const proxyReq = httpRequest({
       hostname: 'localhost',
       port: resolved.port,
-      path: resolved.targetPath,
+      path: resolved.targetPath || '/',
       method: 'GET',
       headers: { ...req.headers, host: `localhost:${resolved.port}` },
     });
