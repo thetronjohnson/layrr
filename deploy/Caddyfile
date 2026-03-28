@@ -1,6 +1,8 @@
 app.layrr.dev {
-    @preview path /preview/*
-    reverse_proxy @preview localhost:8787
-
     reverse_proxy localhost:3000
+}
+
+*.preview.layrr.dev {
+    tls /etc/caddy/preview-fullchain.cer /etc/caddy/preview.key
+    reverse_proxy localhost:8787
 }

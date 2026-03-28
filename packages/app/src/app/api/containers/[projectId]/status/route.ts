@@ -44,6 +44,7 @@ export async function GET(
       framework: result.framework || project.framework,
       editCount: result.editCount || 0,
       accessToken: result.accessToken,
+      slug: result.slug || project.slug,
     });
   } catch {
     // Server unreachable — use DB value

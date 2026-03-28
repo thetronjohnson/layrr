@@ -41,7 +41,7 @@ export async function POST(req: Request) {
   }).returning();
 
   // Fire and forget
-  createFromTemplate(project.id, name, prompt || '', user?.githubUsername || 'layrr', user?.email || 'layrr@layrr.dev', session.userId)
+  createFromTemplate(project.id, name, prompt || '', user?.githubUsername || 'layrr', user?.email || 'layrr@layrr.dev', session.userId, undefined, slug)
     .then(async () => {
       await db.update(projects).set({ containerStatus: "RUNNING" as any, updatedAt: new Date() }).where(eq(projects.id, project.id));
     })

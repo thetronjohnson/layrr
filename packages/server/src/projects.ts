@@ -164,7 +164,7 @@ function ensureUserContainer(userId: string): string {
       console.log(`[incus] Starting existing container ${containerName}`);
       execSync(`incus start ${containerName}`, { stdio: 'pipe' });
       // Wait for container to be ready
-      execSync(`incus exec ${containerName} -- true`, { stdio: 'pipe', timeout: 30000 });
+      execSync(`incus exec ${containerName} -n -- true`, { stdio: 'pipe', timeout: 30000 });
     }
     return containerName;
   }
@@ -175,7 +175,7 @@ function ensureUserContainer(userId: string): string {
   // Wait for container to be ready
   for (let i = 0; i < 30; i++) {
     try {
-      execSync(`incus exec ${containerName} -- true`, { stdio: 'pipe', timeout: 5000 });
+      execSync(`incus exec ${containerName} -n -- true`, { stdio: 'pipe', timeout: 5000 });
       break;
     } catch {
       execSync('sleep 1', { stdio: 'pipe' });
@@ -506,7 +506,8 @@ async function createFromTemplateIncus(id: string, name: string, prompt: string,
     // Copy template into container
     addLog(project, `Creating ${name} from template...`);
     incusExec(containerName, `mkdir -p ${workDir}`);
-    execSync(`incus file push -r ${templateDir}/ ${containerName}${workDir}/`, { stdio: 'pipe' });
+    // Push template contents (not the directory itself) into workspace
+    execSync(`cd "${templateDir}" && tar cf - . | incus exec ${containerName} -n -- tar xf - -C ${workDir}`, { stdio: 'pipe' });
 
     // Init git
     const email = gitEmail || 'layrr@layrr.dev';

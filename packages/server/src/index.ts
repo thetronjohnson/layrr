@@ -48,7 +48,7 @@ app.use('*', async (c, next) => {
       const respHeaders = new Headers();
       resp.headers.forEach((value, key) => {
         if (key !== 'content-encoding' && key !== 'content-length') {
-          respHeaders.set(key, value);
+          respHeaders.append(key, value);
         }
       });
 
@@ -114,6 +114,7 @@ app.get('/projects/:id/status', (c) => {
     framework: project.framework,
     editCount: (project as any).editCount || 0,
     accessToken: project.accessToken,
+    slug: project.slug,
   });
 });
 

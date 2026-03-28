@@ -102,6 +102,7 @@ export function ContainerControls({
         const data = await res.json();
         setContainerStatus(data.status);
         if (data.proxyPort) setProxyPort(data.proxyPort);
+        if (data.accessToken) setAccessToken(data.accessToken);
         if (data.status === "RUNNING" || data.status === "ERROR") {
           setLoading(false);
           return;
