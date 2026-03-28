@@ -31,7 +31,7 @@ export async function POST(
   }
 
   try {
-    const result = await pushProject(projectId, targetBranch, user.githubToken);
+    const result = await pushProject(projectId, targetBranch, user.githubToken, project.githubRepo || undefined);
     return NextResponse.json(result);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

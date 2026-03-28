@@ -4,7 +4,7 @@ dotenv.config({ path: join(process.cwd(), '..', '..', '.env') });
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
-import { startProject, stopProject, getProject, getProjectLogs, freshClone, pushChanges, getEditHistory, getEditCount, createFromTemplate } from './projects.js';
+import { startProject, stopProject, getProject, getProjectLogs, freshClone, pushChanges, getEditHistory, getEditCount, createFromTemplate, linkGithubRepo } from './projects.js';
 
 const app = new Hono();
 const PORT = Number(process.env.SERVER_PORT || 8787);
@@ -89,14 +89,25 @@ app.post('/projects/:id/fresh-clone', (c) => {
   return c.json({ success: done });
 });
 
+// Link workspace to a GitHub repo (initial push)
+app.post('/projects/:id/link-github', async (c) => {
+  const { id } = c.req.param();
+  const { githubRepo, githubToken } = await c.req.json();
+  if (!githubRepo || !githubToken) {
+    return c.json({ error: 'Missing githubRepo or githubToken' }, 400);
+  }
+  const result = linkGithubRepo(id, githubRepo, githubToken);
+  return c.json(result);
+});
+
 // Push changes to GitHub
 app.post('/projects/:id/push', async (c) => {
   const { id } = c.req.param();
-  const { targetBranch, githubToken } = await c.req.json();
+  const { targetBranch, githubToken, githubRepo } = await c.req.json();
   if (!targetBranch || !githubToken) {
     return c.json({ error: 'Missing targetBranch or githubToken' }, 400);
   }
-  const result = pushChanges(id, targetBranch, githubToken);
+  const result = pushChanges(id, targetBranch, githubToken, githubRepo);
   return c.json(result);
 });
 

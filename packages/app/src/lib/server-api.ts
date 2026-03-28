@@ -47,9 +47,16 @@ export async function createFromTemplate(projectId: string, name: string, prompt
   });
 }
 
-export async function pushProject(projectId: string, targetBranch: string, githubToken: string) {
+export async function linkGithubRepo(projectId: string, githubRepo: string, githubToken: string) {
+  return api(`/projects/${projectId}/link-github`, {
+    method: 'POST',
+    body: JSON.stringify({ githubRepo, githubToken }),
+  });
+}
+
+export async function pushProject(projectId: string, targetBranch: string, githubToken: string, githubRepo?: string) {
   return api(`/projects/${projectId}/push`, {
     method: 'POST',
-    body: JSON.stringify({ targetBranch, githubToken }),
+    body: JSON.stringify({ targetBranch, githubToken, githubRepo }),
   });
 }

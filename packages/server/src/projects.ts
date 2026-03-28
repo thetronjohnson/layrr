@@ -392,42 +392,81 @@ export function freshClone(id: string): boolean {
   }
 }
 
-export function pushChanges(id: string, targetBranch: string, githubToken: string): { success: boolean; message: string } {
-  const project = projects.get(id);
-  if (!project) return { success: false, message: 'Project not found' };
-
-  const workDir = project.workDir;
+export function linkGithubRepo(id: string, githubRepo: string, githubToken: string): { success: boolean; message: string } {
+  const workDir = join(WORKSPACE_DIR, id);
   if (!existsSync(join(workDir, '.git'))) {
     return { success: false, message: 'No workspace found' };
   }
 
   try {
+    const remoteUrl = `https://x-access-token:${githubToken}@github.com/${githubRepo}.git`;
+
+    // Check if origin exists, add or update
+    try {
+      execSync('git remote get-url origin', { cwd: workDir, stdio: 'pipe' });
+      execSync(`git remote set-url origin "${remoteUrl}"`, { cwd: workDir, stdio: 'pipe' });
+    } catch {
+      execSync(`git remote add origin "${remoteUrl}"`, { cwd: workDir, stdio: 'pipe' });
+    }
+
+    // Push all commits to the new repo and fetch to set up tracking refs
+    execSync('git push -u origin HEAD:main', { cwd: workDir, stdio: 'pipe' });
+    execSync('git fetch origin', { cwd: workDir, stdio: 'pipe' });
+
+    // Update in-memory project if it exists
+    const project = projects.get(id);
+    if (project) {
+      project.githubRepo = githubRepo;
+      project.branch = 'main';
+    }
+
+    return { success: true, message: `Pushed to ${githubRepo}` };
+  } catch (err: any) {
+    return { success: false, message: err.message || 'Failed to push' };
+  }
+}
+
+export function pushChanges(id: string, targetBranch: string, githubToken: string, githubRepo?: string): { success: boolean; message: string } {
+  const project = projects.get(id);
+  const workDir = project?.workDir || join(WORKSPACE_DIR, id);
+  const repo = githubRepo || project?.githubRepo;
+
+  if (!existsSync(join(workDir, '.git'))) {
+    return { success: false, message: 'No workspace found' };
+  }
+  if (!repo) {
+    return { success: false, message: 'No GitHub repo linked' };
+  }
+
+  try {
     // Set remote with token for auth
-    const remoteUrl = `https://x-access-token:${githubToken}@github.com/${project.githubRepo}.git`;
-    execSync(`git remote set-url origin "${remoteUrl}"`, { cwd: workDir, stdio: 'pipe' });
+    const remoteUrl = `https://x-access-token:${githubToken}@github.com/${repo}.git`;
+    try {
+      execSync(`git remote set-url origin "${remoteUrl}"`, { cwd: workDir, stdio: 'pipe' });
+    } catch {
+      execSync(`git remote add origin "${remoteUrl}"`, { cwd: workDir, stdio: 'pipe' });
+    }
 
     // Check if there are layrr commits to push
-    const log = execSync('git log --oneline --grep="\\[layrr\\]" origin/HEAD..HEAD 2>/dev/null || echo ""', { cwd: workDir, encoding: 'utf-8' }).trim();
+    const trackingBranch = `origin/${targetBranch}`;
+    const log = execSync(`git log --oneline --grep="\\[layrr\\]" ${trackingBranch}..HEAD 2>/dev/null || echo ""`, { cwd: workDir, encoding: 'utf-8' }).trim();
     if (!log) {
       return { success: false, message: 'No layrr edits to push' };
     }
 
     const commitCount = log.split('\n').filter(Boolean).length;
 
-    if (targetBranch === project.branch) {
-      // Push directly to the same branch
+    if (targetBranch === (project?.branch || 'main')) {
       execSync(`git push origin HEAD:${targetBranch}`, { cwd: workDir, stdio: 'pipe' });
-      addLog(project, `Pushed ${commitCount} edit(s) to ${targetBranch}`);
-      return { success: true, message: `Pushed ${commitCount} edit(s) to ${targetBranch}` };
     } else {
-      // Push to a new branch
       execSync(`git push origin HEAD:refs/heads/${targetBranch}`, { cwd: workDir, stdio: 'pipe' });
-      addLog(project, `Pushed ${commitCount} edit(s) to new branch ${targetBranch}`);
-      return { success: true, message: `Pushed ${commitCount} edit(s) to ${targetBranch}` };
     }
+
+    if (project) addLog(project, `Pushed ${commitCount} edit(s) to ${targetBranch}`);
+    return { success: true, message: `Pushed ${commitCount} edit(s) to ${targetBranch}` };
   } catch (err: any) {
     const msg = err.message || 'Push failed';
-    addLog(project, `Push failed: ${msg}`);
+    if (project) addLog(project, `Push failed: ${msg}`);
     return { success: false, message: msg };
   }
 }

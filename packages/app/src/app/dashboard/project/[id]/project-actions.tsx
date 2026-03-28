@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { RotateCcw, GitBranch, Loader2, AlertTriangle, Lock, Check } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { RotateCcw, GitBranch, Loader2, AlertTriangle, Lock, Check, Link2, CircleCheck, CircleX } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
 
 function GithubIcon({ className }: { className?: string }) {
   return (
@@ -12,17 +13,161 @@ function GithubIcon({ className }: { className?: string }) {
   );
 }
 
-export function ProjectActions({ projectId, branch, sharePassword: initialPassword }: { projectId: string; branch: string; sharePassword?: string | null }) {
+export function ProjectActions({ projectId, branch, githubRepo, sharePassword: initialPassword }: { projectId: string; branch: string; githubRepo?: string | null; sharePassword?: string | null }) {
+  const hasRepo = !!githubRepo;
+
+  return (
+    <div className="rounded-xl bg-card ring-1 ring-foreground/10 overflow-hidden">
+      <div className="px-5 py-4 border-b border-border">
+        <h2 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Actions</h2>
+      </div>
+      <div className="p-5 space-y-3">
+        {hasRepo ? (
+          <GitHubActions projectId={projectId} branch={branch} />
+        ) : (
+          <LinkGithubAction projectId={projectId} />
+        )}
+        <SharePasswordAction projectId={projectId} initialPassword={initialPassword} />
+      </div>
+    </div>
+  );
+}
+
+function LinkGithubAction({ projectId }: { projectId: string }) {
+  const [showLink, setShowLink] = useState(false);
+  const [repoName, setRepoName] = useState("");
+  const [linking, setLinking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [availability, setAvailability] = useState<"idle" | "checking" | "available" | "taken">("idle");
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    const name = repoName.trim();
+    if (!name || name.length < 2) {
+      setAvailability("idle");
+      return;
+    }
+
+    setAvailability("checking");
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/github/check-repo?name=${encodeURIComponent(name)}`);
+        const data = await res.json();
+        setAvailability(data.available ? "available" : "taken");
+      } catch {
+        setAvailability("idle");
+      }
+    }, 500);
+
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [repoName]);
+
+  async function handleLink() {
+    if (!repoName.trim()) return;
+    setLinking(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/link-github`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoName: repoName.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        router.refresh();
+      } else {
+        setError(data.error || "Failed to create repository");
+      }
+    } catch {
+      setError("Something went wrong");
+    }
+    setLinking(false);
+  }
+
+  return (
+    <div>
+      <button
+        onClick={() => { setShowLink(!showLink); setError(null); }}
+        className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-secondary"
+      >
+        <Link2 className="h-4 w-4 text-muted-foreground" />
+        <div className="flex-1">
+          <p className="text-xs font-medium">Link with GitHub</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Create a repo and push your project</p>
+        </div>
+      </button>
+
+      <AnimatePresence>
+        {showLink && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="px-3 pb-3 pt-2 space-y-3">
+              <div>
+                <label className="text-[10px] text-muted-foreground mb-1 block">Repository name</label>
+                <div className="flex gap-2">
+                  <div className="flex-1 flex items-center gap-2 h-8 px-3 rounded-md border border-input bg-secondary text-xs">
+                    <input
+                      value={repoName}
+                      onChange={(e) => { setRepoName(e.target.value); setError(null); }}
+                      className="flex-1 bg-transparent outline-none text-xs"
+                      placeholder="my-website"
+                      onKeyDown={(e) => e.key === "Enter" && availability === "available" && handleLink()}
+                    />
+                    {availability === "checking" && <Loader2 className="h-3 w-3 text-muted-foreground animate-spin flex-shrink-0" />}
+                    {availability === "available" && <CircleCheck className="h-3 w-3 text-success flex-shrink-0" />}
+                    {availability === "taken" && <CircleX className="h-3 w-3 text-destructive flex-shrink-0" />}
+                  </div>
+                  <button
+                    onClick={handleLink}
+                    disabled={linking || availability !== "available"}
+                    className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded-md text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                  >
+                    {linking ? <Loader2 className="h-3 w-3 animate-spin" /> : <GithubIcon className="h-3 w-3" />}
+                    Create & Link
+                  </button>
+                </div>
+              </div>
+              {availability === "taken" && (
+                <p className="text-[10px] text-destructive">This repository name is already taken</p>
+              )}
+              {availability === "available" && (
+                <p className="text-[10px] text-success">Name is available</p>
+              )}
+              {error && (
+                <motion.p
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-[10px] text-destructive"
+                >
+                  {error}
+                </motion.p>
+              )}
+              <p className="text-[10px] text-muted-foreground">
+                Creates a new public repository on your GitHub account and pushes the project code.
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function GitHubActions({ projectId, branch }: { projectId: string; branch: string }) {
   const [showPush, setShowPush] = useState(false);
   const [showFreshClone, setShowFreshClone] = useState(false);
-  const [showShare, setShowShare] = useState(false);
   const [pushBranch, setPushBranch] = useState(`layrr/${branch}`);
   const [pushing, setPushing] = useState(false);
   const [cloning, setCloning] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [sharePass, setSharePass] = useState(initialPassword || '');
-  const [savingPass, setSavingPass] = useState(false);
-  const [passSaved, setPassSaved] = useState(false);
 
   async function handlePush() {
     setPushing(true);
@@ -57,187 +202,190 @@ export function ProjectActions({ projectId, branch, sharePassword: initialPasswo
   }
 
   return (
-    <div className="rounded-xl bg-card ring-1 ring-foreground/10 overflow-hidden">
-      <div className="px-5 py-4 border-b border-border">
-        <h2 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Actions</h2>
-      </div>
-      <div className="p-5 space-y-3">
-        {/* Push to GitHub */}
-        <div>
-          <button
-            onClick={() => { setShowPush(!showPush); setShowFreshClone(false); setResult(null); }}
-            className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-secondary"
-          >
-            <GithubIcon className="h-4 w-4 text-muted-foreground" />
-            <div className="flex-1">
-              <p className="text-xs font-medium">Push to GitHub</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Push your edits to a branch</p>
-            </div>
-          </button>
+    <>
+      {/* Push to GitHub */}
+      <div>
+        <button
+          onClick={() => { setShowPush(!showPush); setShowFreshClone(false); setResult(null); }}
+          className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-secondary"
+        >
+          <GithubIcon className="h-4 w-4 text-muted-foreground" />
+          <div className="flex-1">
+            <p className="text-xs font-medium">Push to GitHub</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Push your edits to a branch</p>
+          </div>
+        </button>
 
-          <AnimatePresence>
-            {showPush && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden"
-              >
-                <div className="px-3 pb-3 pt-2 space-y-3">
-                  <div>
-                    <label className="text-[10px] text-muted-foreground mb-1 block">Target branch</label>
-                    <div className="flex gap-2">
-                      <div className="flex-1 flex items-center gap-2 h-8 px-3 rounded-md border border-input bg-secondary text-xs">
-                        <GitBranch className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                        <input
-                          value={pushBranch}
-                          onChange={(e) => setPushBranch(e.target.value)}
-                          className="flex-1 bg-transparent outline-none text-xs"
-                          placeholder="branch-name"
-                        />
-                      </div>
-                      <button
-                        onClick={handlePush}
-                        disabled={pushing || !pushBranch}
-                        className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded-md text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-                      >
-                        {pushing ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                        Push
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex gap-1.5">
-                    <button
-                      onClick={() => setPushBranch(branch)}
-                      className="text-[10px] text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5 rounded bg-secondary"
-                    >
-                      {branch}
-                    </button>
-                    <button
-                      onClick={() => setPushBranch(`layrr/${branch}`)}
-                      className="text-[10px] text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5 rounded bg-secondary"
-                    >
-                      layrr/{branch}
-                    </button>
-                  </div>
-                  <ResultMessage result={result} />
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Fresh clone */}
-        <div>
-          <button
-            onClick={() => { setShowFreshClone(!showFreshClone); setShowPush(false); setResult(null); }}
-            className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-secondary"
-          >
-            <RotateCcw className="h-4 w-4 text-muted-foreground" />
-            <div className="flex-1">
-              <p className="text-xs font-medium">Fresh clone</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Delete workspace and re-clone from GitHub</p>
-            </div>
-          </button>
-
-          <AnimatePresence>
-            {showFreshClone && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden"
-              >
-                <div className="px-3 pb-3 pt-2 space-y-3">
-                  <div className="flex items-start gap-2 rounded-lg bg-destructive/5 border border-destructive/10 px-3 py-2.5">
-                    <AlertTriangle className="h-3.5 w-3.5 text-destructive flex-shrink-0 mt-0.5" />
-                    <p className="text-[10px] text-muted-foreground leading-relaxed">
-                      This will delete all local changes. Make sure you've pushed any edits you want to keep.
-                    </p>
-                  </div>
-                  <button
-                    onClick={handleFreshClone}
-                    disabled={cloning}
-                    className="flex items-center gap-1.5 bg-destructive/10 text-destructive px-3 py-1.5 rounded-md text-xs font-semibold hover:bg-destructive/20 transition-colors disabled:opacity-50"
-                  >
-                    {cloning ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-                    Delete & Re-clone
-                  </button>
-                  <ResultMessage result={result} />
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Share password */}
-        <div>
-          <button
-            onClick={() => { setShowShare(!showShare); setShowPush(false); setShowFreshClone(false); setResult(null); setPassSaved(false); }}
-            className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-secondary"
-          >
-            <Lock className="h-4 w-4 text-muted-foreground" />
-            <div className="flex-1">
-              <p className="text-xs font-medium">Share password</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                {initialPassword ? "Password protected" : "Set a password to allow others to access the editor"}
-              </p>
-            </div>
-          </button>
-
-          <AnimatePresence>
-            {showShare && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden"
-              >
-                <div className="px-3 pb-3 pt-2 space-y-3">
-                  <div>
-                    <label className="text-[10px] text-muted-foreground mb-1 block">Password</label>
-                    <div className="flex gap-2">
+        <AnimatePresence>
+          {showPush && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="px-3 pb-3 pt-2 space-y-3">
+                <div>
+                  <label className="text-[10px] text-muted-foreground mb-1 block">Target branch</label>
+                  <div className="flex gap-2">
+                    <div className="flex-1 flex items-center gap-2 h-8 px-3 rounded-md border border-input bg-secondary text-xs">
+                      <GitBranch className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                       <input
-                        type="text"
-                        value={sharePass}
-                        onChange={(e) => { setSharePass(e.target.value); setPassSaved(false); }}
-                        className="flex-1 h-8 px-3 rounded-md border border-input bg-secondary text-xs outline-none focus:border-foreground/20 transition-colors"
-                        placeholder="Leave empty to disable sharing"
+                        value={pushBranch}
+                        onChange={(e) => setPushBranch(e.target.value)}
+                        className="flex-1 bg-transparent outline-none text-xs"
+                        placeholder="branch-name"
                       />
-                      <button
-                        onClick={async () => {
-                          setSavingPass(true);
-                          setPassSaved(false);
-                          try {
-                            await fetch(`/api/projects/${projectId}/share`, {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ password: sharePass }),
-                            });
-                            setPassSaved(true);
-                          } catch {}
-                          setSavingPass(false);
-                        }}
-                        disabled={savingPass}
-                        className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded-md text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-                      >
-                        {savingPass ? <Loader2 className="h-3 w-3 animate-spin" /> : passSaved ? <Check className="h-3 w-3" /> : null}
-                        {passSaved ? "Saved" : "Save"}
-                      </button>
                     </div>
+                    <button
+                      onClick={handlePush}
+                      disabled={pushing || !pushBranch}
+                      className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded-md text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                    >
+                      {pushing ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                      Push
+                    </button>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    {sharePass ? "Anyone with this password can access the editor. Restart the editor to apply changes." : "No password set — only you can access the editor."}
+                </div>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => setPushBranch(branch)}
+                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5 rounded bg-secondary"
+                  >
+                    {branch}
+                  </button>
+                  <button
+                    onClick={() => setPushBranch(`layrr/${branch}`)}
+                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5 rounded bg-secondary"
+                  >
+                    layrr/{branch}
+                  </button>
+                </div>
+                <ResultMessage result={result} />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Fresh clone */}
+      <div>
+        <button
+          onClick={() => { setShowFreshClone(!showFreshClone); setShowPush(false); setResult(null); }}
+          className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-secondary"
+        >
+          <RotateCcw className="h-4 w-4 text-muted-foreground" />
+          <div className="flex-1">
+            <p className="text-xs font-medium">Fresh clone</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Delete workspace and re-clone from GitHub</p>
+          </div>
+        </button>
+
+        <AnimatePresence>
+          {showFreshClone && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="px-3 pb-3 pt-2 space-y-3">
+                <div className="flex items-start gap-2 rounded-lg bg-destructive/5 border border-destructive/10 px-3 py-2.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-destructive flex-shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    This will delete all local changes. Make sure you've pushed any edits you want to keep.
                   </p>
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+                <button
+                  onClick={handleFreshClone}
+                  disabled={cloning}
+                  className="flex items-center gap-1.5 bg-destructive/10 text-destructive px-3 py-1.5 rounded-md text-xs font-semibold hover:bg-destructive/20 transition-colors disabled:opacity-50"
+                >
+                  {cloning ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                  Delete & Re-clone
+                </button>
+                <ResultMessage result={result} />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
+    </>
+  );
+}
+
+function SharePasswordAction({ projectId, initialPassword }: { projectId: string; initialPassword?: string | null }) {
+  const [showShare, setShowShare] = useState(false);
+  const [sharePass, setSharePass] = useState(initialPassword || '');
+  const [savingPass, setSavingPass] = useState(false);
+  const [passSaved, setPassSaved] = useState(false);
+
+  return (
+    <div>
+      <button
+        onClick={() => { setShowShare(!showShare); setPassSaved(false); }}
+        className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-secondary"
+      >
+        <Lock className="h-4 w-4 text-muted-foreground" />
+        <div className="flex-1">
+          <p className="text-xs font-medium">Share password</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            {initialPassword ? "Password protected" : "Set a password to allow others to access the editor"}
+          </p>
+        </div>
+      </button>
+
+      <AnimatePresence>
+        {showShare && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="px-3 pb-3 pt-2 space-y-3">
+              <div>
+                <label className="text-[10px] text-muted-foreground mb-1 block">Password</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={sharePass}
+                    onChange={(e) => { setSharePass(e.target.value); setPassSaved(false); }}
+                    className="flex-1 h-8 px-3 rounded-md border border-input bg-secondary text-xs outline-none focus:border-foreground/20 transition-colors"
+                    placeholder="Leave empty to disable sharing"
+                  />
+                  <button
+                    onClick={async () => {
+                      setSavingPass(true);
+                      setPassSaved(false);
+                      try {
+                        await fetch(`/api/projects/${projectId}/share`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ password: sharePass }),
+                        });
+                        setPassSaved(true);
+                      } catch {}
+                      setSavingPass(false);
+                    }}
+                    disabled={savingPass}
+                    className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded-md text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                  >
+                    {savingPass ? <Loader2 className="h-3 w-3 animate-spin" /> : passSaved ? <Check className="h-3 w-3" /> : null}
+                    {passSaved ? "Saved" : "Save"}
+                  </button>
+                </div>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                {sharePass ? "Anyone with this password can access the editor. Restart the editor to apply changes." : "No password set — only you can access the editor."}
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

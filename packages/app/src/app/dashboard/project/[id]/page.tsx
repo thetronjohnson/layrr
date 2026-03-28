@@ -58,16 +58,18 @@ export default async function ProjectPage({
           <div>
             <h1 className="text-xl font-bold">{project.name}</h1>
             <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-              <a
-                href={`https://github.com/${project.githubRepo}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 hover:text-foreground transition-colors"
-              >
-                <GithubIcon className="h-3 w-3" />
-                {project.githubRepo}
-                <ExternalLink className="h-2.5 w-2.5" />
-              </a>
+              {project.githubRepo && (
+                <a
+                  href={`https://github.com/${project.githubRepo}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+                >
+                  <GithubIcon className="h-3 w-3" />
+                  {project.githubRepo}
+                  <ExternalLink className="h-2.5 w-2.5" />
+                </a>
+              )}
               <span className="flex items-center gap-1">
                 <GitBranch className="h-3 w-3" />
                 {project.branch}
@@ -96,7 +98,7 @@ export default async function ProjectPage({
 
 
         {/* Actions */}
-        <ProjectActions projectId={project.id} branch={project.branch} sharePassword={project.sharePassword} />
+        <ProjectActions projectId={project.id} branch={project.branch} githubRepo={project.githubRepo} sharePassword={project.sharePassword} />
 
         {/* Edit history */}
         <EditHistory projectId={project.id} />
