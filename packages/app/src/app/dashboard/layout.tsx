@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { users } from "@/lib/schema";
+import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
 export default async function DashboardLayout({
@@ -10,6 +13,16 @@ export default async function DashboardLayout({
   const session = await getSession();
   if (!session.userId) redirect("/sign-in");
 
+  const [user] = await db.select().from(users).where(eq(users.id, session.userId)).limit(1);
+  if (!user) redirect("/sign-in");
+
+  const status = user.subscriptionStatus;
+  const hasAccess =
+    status === "active" ||
+    status === "trialing" ||
+    (status === "canceled" && user.subscriptionEndsAt && user.subscriptionEndsAt > new Date());
+  if (!hasAccess) redirect("/pricing");
+
   return (
     <div className="min-h-screen">
       <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
@@ -19,9 +32,12 @@ export default async function DashboardLayout({
           </Link>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
-              <span className="text-[13px] text-muted-foreground">
+              <Link
+                href="/dashboard/profile"
+                className="text-[13px] text-muted-foreground hover:text-foreground transition-colors"
+              >
                 {session.githubUsername || session.displayName}
-              </span>
+              </Link>
               <a
                 href="/api/auth/logout"
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"

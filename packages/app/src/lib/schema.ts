@@ -7,7 +7,13 @@ export const users = sqliteTable("users", {
   email: text("email").notNull(),
   githubUsername: text("github_username"),
   githubToken: text("github_token"),
-  plan: text("plan", { enum: ["FREE", "PRO"] }).default("FREE").notNull(),
+  polarCustomerId: text("polar_customer_id"),
+  polarSubscriptionId: text("polar_subscription_id"),
+  subscriptionStatus: text("subscription_status", {
+    enum: ["trialing", "active", "canceled", "past_due", "none"],
+  }).default("none").notNull(),
+  subscriptionEndsAt: integer("subscription_ends_at", { mode: "timestamp" }),
+  cancelAtPeriodEnd: integer("cancel_at_period_end", { mode: "boolean" }).default(false).notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()).notNull(),
 });
