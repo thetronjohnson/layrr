@@ -5,7 +5,6 @@ import { Plus } from "lucide-react";
 import Link from "next/link";
 import { AnimatePresence } from "framer-motion";
 import { ImportModal } from "./import-modal";
-import { ConnectGithubModal } from "./connect-github-modal";
 
 function GithubIcon({ className }: { className?: string }) {
   return (
@@ -15,6 +14,14 @@ function GithubIcon({ className }: { className?: string }) {
   );
 }
 
+function handleGithubClick(githubConnected: boolean, setShowModal: (v: boolean) => void) {
+  if (githubConnected) {
+    setShowModal(true);
+  } else {
+    window.open("/api/auth/github", "_blank");
+  }
+}
+
 export function ProjectActions({ showNewButton = true, githubConnected = true, inline = false }: { showNewButton?: boolean; githubConnected?: boolean; inline?: boolean }) {
   const [showModal, setShowModal] = useState(false);
 
@@ -22,7 +29,7 @@ export function ProjectActions({ showNewButton = true, githubConnected = true, i
     <>
       {inline ? (
         <button
-          onClick={() => setShowModal(true)}
+          onClick={() => handleGithubClick(githubConnected, setShowModal)}
           className="flex items-center justify-center gap-2 rounded-lg ring-1 ring-foreground/10 py-3 text-sm font-medium hover:ring-foreground/20 transition-all"
         >
           <GithubIcon className="h-4 w-4 text-muted-foreground" />
@@ -40,7 +47,7 @@ export function ProjectActions({ showNewButton = true, githubConnected = true, i
           </Link>
         )}
         <button
-          onClick={() => setShowModal(true)}
+          onClick={() => handleGithubClick(githubConnected, setShowModal)}
           className="flex items-center gap-2 rounded-md border border-border px-3.5 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
         >
           <GithubIcon className="h-3.5 w-3.5" />
@@ -49,11 +56,7 @@ export function ProjectActions({ showNewButton = true, githubConnected = true, i
       </div>
       )}
       <AnimatePresence>
-        {showModal && (
-          githubConnected
-            ? <ImportModal onClose={() => setShowModal(false)} />
-            : <ConnectGithubModal onClose={() => setShowModal(false)} />
-        )}
+        {showModal && <ImportModal onClose={() => setShowModal(false)} />}
       </AnimatePresence>
     </>
   );

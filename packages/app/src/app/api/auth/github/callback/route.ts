@@ -44,6 +44,14 @@ export async function GET(req: Request) {
 
     // If already logged in (e.g. Google user), link GitHub to existing account
     if (session.userId) {
+      // Clear github_id from any other user that already has it
+      await db.update(users).set({
+        githubId: null,
+        githubToken: null,
+        githubUsername: null,
+        updatedAt: new Date(),
+      }).where(eq(users.githubId, String(githubUser.id)));
+
       await db.update(users).set({
         githubId: String(githubUser.id),
         githubToken: accessToken,
