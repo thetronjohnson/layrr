@@ -13,7 +13,7 @@ function GithubIcon({ className }: { className?: string }) {
   );
 }
 
-export function ProjectActions({ projectId, branch, githubRepo, sharePassword: initialPassword }: { projectId: string; branch: string; githubRepo?: string | null; sharePassword?: string | null }) {
+export function ProjectActions({ projectId, branch, githubRepo, sharePassword: initialPassword, hasGithub = true }: { projectId: string; branch: string; githubRepo?: string | null; sharePassword?: string | null; hasGithub?: boolean }) {
   const hasRepo = !!githubRepo;
 
   return (
@@ -22,14 +22,33 @@ export function ProjectActions({ projectId, branch, githubRepo, sharePassword: i
         <h2 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Actions</h2>
       </div>
       <div className="p-5 space-y-3">
-        {hasRepo ? (
-          <GitHubActions projectId={projectId} branch={branch} />
+        {hasGithub ? (
+          hasRepo ? (
+            <GitHubActions projectId={projectId} branch={branch} />
+          ) : (
+            <LinkGithubAction projectId={projectId} />
+          )
         ) : (
-          <LinkGithubAction projectId={projectId} />
+          <ConnectGithubAction />
         )}
         <SharePasswordAction projectId={projectId} initialPassword={initialPassword} />
       </div>
     </div>
+  );
+}
+
+function ConnectGithubAction() {
+  return (
+    <a
+      href="/api/auth/github"
+      className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-secondary"
+    >
+      <GithubIcon className="h-4 w-4 text-muted-foreground" />
+      <div className="flex-1">
+        <p className="text-xs font-medium">Connect GitHub</p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">Link your GitHub account to publish and import projects</p>
+      </div>
+    </a>
   );
 }
 

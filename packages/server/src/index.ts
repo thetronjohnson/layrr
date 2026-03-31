@@ -110,6 +110,7 @@ app.get('/projects/:id/status', (c) => {
   }
   return c.json({
     status: project.status,
+    stage: project.stage,
     proxyPort: project.proxyPort,
     devPort: project.devPort,
     framework: project.framework,

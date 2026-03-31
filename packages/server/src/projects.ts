@@ -12,6 +12,8 @@ const DEV_PORT_END = 5199;
 const PROXY_PORT_START = 6100;
 const PROXY_PORT_END = 6299;
 
+export type ProjectStage = 'setup' | 'installing' | 'dev-server' | 'generating' | 'fixing' | 'ready' | null;
+
 export interface ProjectProcess {
   id: string;
   githubRepo: string;
@@ -22,6 +24,7 @@ export interface ProjectProcess {
   devPort: number;
   proxyPort: number;
   status: 'stopped' | 'starting' | 'running' | 'error';
+  stage: ProjectStage;
   logs: string[];
   workDir: string;
   accessToken: string;
@@ -184,6 +187,7 @@ export async function startProject(id: string, githubRepo: string, branch: strin
     devProcess: null, proxyProcess: null,
     devPort, proxyPort,
     status: 'starting',
+    stage: 'setup',
     logs: [],
     workDir,
     accessToken,
@@ -211,10 +215,12 @@ export async function startProject(id: string, githubRepo: string, branch: strin
     project.framework = detectFramework(workDir);
     addLog(project, `Framework: ${project.framework}, PM: ${pm}`);
 
+    project.stage = 'installing';
     addLog(project, 'Installing dependencies...');
     execSync(`${pm} install`, { cwd: workDir, stdio: 'pipe', timeout: 120000 });
     addLog(project, 'Dependencies installed');
 
+    project.stage = 'dev-server';
     const devCmd = getDevCommand(project.framework, pm, devPort);
     addLog(project, `Starting dev server: ${devCmd.cmd} ${devCmd.args.join(' ')}`);
     project.devProcess = spawnSandboxed(devCmd.cmd, devCmd.args, {
@@ -249,12 +255,14 @@ export async function startProject(id: string, githubRepo: string, branch: strin
     });
 
     await waitForPort(proxyPort, 30000);
+    project.stage = 'ready';
     project.status = 'running';
     addLog(project, `Ready! Dev: ${devPort}, Proxy: ${proxyPort}`);
     return project;
   } catch (err: any) {
     addLog(project, `Error: ${err.message}`);
     project.status = 'error';
+    project.stage = null;
     killProcess(project.devProcess);
     killProcess(project.proxyProcess);
     project.devProcess = null;
@@ -284,7 +292,7 @@ export async function createFromTemplate(id: string, name: string, prompt: strin
   const project: ProjectProcess = {
     id, githubRepo: '', branch: 'main', framework: 'nextjs',
     devProcess: null, proxyProcess: null, devPort, proxyPort,
-    status: 'starting', logs: [], workDir, accessToken, slug,
+    status: 'starting', stage: 'setup', logs: [], workDir, accessToken, slug,
   };
   projects.set(id, project);
 
@@ -297,9 +305,11 @@ export async function createFromTemplate(id: string, name: string, prompt: strin
     execSync(`git config user.email "${email}" && git config user.name "${uname}"`, { cwd: workDir, stdio: 'pipe' });
     execSync('git add -A && git commit -m "initial template"', { cwd: workDir, stdio: 'pipe' });
 
+    project.stage = 'installing';
     addLog(project, 'Installing dependencies...');
     execSync('pnpm install', { cwd: workDir, stdio: 'pipe', timeout: 120000 });
 
+    project.stage = 'dev-server';
     const devCmd = getDevCommand('nextjs', 'pnpm', devPort);
     project.devProcess = spawnSandboxed(devCmd.cmd, devCmd.args, {
       cwd: workDir, stdio: ['ignore', 'pipe', 'pipe'],
@@ -327,17 +337,40 @@ export async function createFromTemplate(id: string, name: string, prompt: strin
     await waitForPort(proxyPort, 30000);
 
     if (prompt) {
+      project.stage = 'generating';
       addLog(project, 'Generating initial version...');
-      try { await sendEditViaProxy(proxyPort, prompt, project.accessToken); addLog(project, 'Initial version generated'); }
-      catch (err: any) { addLog(project, `Generation warning: ${err.message}`); }
+      try {
+        await sendEditViaProxy(proxyPort, prompt, project.accessToken);
+        addLog(project, 'Initial version generated');
+
+        // Repair loop: check for build errors and auto-fix
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          await new Promise(r => setTimeout(r, 3000));
+          const errors = extractBuildErrors(project);
+          if (!errors) break;
+          project.stage = 'fixing';
+          addLog(project, `Build error detected (attempt ${attempt}/3), auto-fixing...`);
+          try {
+            await sendFixViaProxy(proxyPort, errors, project.accessToken);
+            addLog(project, `Fix attempt ${attempt} applied`);
+          } catch (err: any) {
+            addLog(project, `Fix attempt ${attempt} failed: ${err.message}`);
+            break;
+          }
+        }
+      } catch (err: any) {
+        addLog(project, `Generation warning: ${err.message}`);
+      }
     }
 
+    project.stage = 'ready';
     project.status = 'running';
     addLog(project, `Ready! Dev: ${devPort}, Proxy: ${proxyPort}`);
     return project;
   } catch (err: any) {
     addLog(project, `Error: ${err.message}`);
     project.status = 'error';
+    project.stage = null;
     killProcess(project.devProcess);
     killProcess(project.proxyProcess);
     releasePort(devPort, usedDevPorts);
@@ -485,7 +518,41 @@ export async function cleanupOrphanProcesses() {
 
 // ── internal helpers ──
 
+function extractBuildErrors(project: ProjectProcess): string | null {
+  // Look at recent logs for compilation errors
+  const recent = project.logs.slice(-30);
+  const errorLines: string[] = [];
+  for (const line of recent) {
+    const content = line.replace(/^\[.*?\]\s*/, ''); // strip timestamp
+    if (
+      content.includes('Export') && content.includes("doesn't exist") ||
+      content.includes('Module not found') ||
+      content.includes('Cannot find module') ||
+      content.includes('SyntaxError') ||
+      content.includes('TypeError') ||
+      content.includes('Unexpected token') ||
+      (content.includes('⨯') && content.includes('.tsx'))
+    ) {
+      errorLines.push(content);
+    }
+  }
+  if (errorLines.length === 0) return null;
+  // Deduplicate and limit
+  const unique = [...new Set(errorLines)].slice(0, 10);
+  return unique.join('\n');
+}
+
+async function sendFixViaProxy(proxyPort: number, errors: string, accessToken?: string): Promise<void> {
+  const fixPrompt = `The code you just wrote has build errors. Fix them.\n\nErrors:\n${errors}\n\nRead the files that have errors, fix the imports and code, and save. Do not rewrite the entire file — only fix the broken parts.`;
+  return sendRawEditViaProxy(proxyPort, fixPrompt, accessToken);
+}
+
 async function sendEditViaProxy(proxyPort: number, prompt: string, accessToken?: string): Promise<void> {
+  const enhancedPrompt = `You are building a Next.js web application with Tailwind CSS and shadcn/ui components.\n\nThe user wants: ${prompt}\n\nEdit the files in this project to build what the user described. Focus on src/app/page.tsx as the main page. Use shadcn Button component where appropriate. Use lucide-react for icons and framer-motion for animations (both already installed). Make it look professional and modern.\n\nIMPORTANT: For lucide-react icons, use these exact names (PascalCase): ArrowRight, ArrowLeft, Check, ChevronDown, ChevronRight, Code, ExternalLink, Github, Globe, Heart, Home, Layers, Linkedin, Loader2, Lock, Mail, MapPin, Menu, MessageCircle, Moon, MoveRight, Pencil, Phone, Play, Plus, Search, Send, Settings, Sparkles, Star, Sun, Terminal, Trash2, Trophy, Upload, User, Users, X, Zap. Do NOT use names ending in "Icon" (e.g. use "Github" not "GithubIcon").`;
+  return sendRawEditViaProxy(proxyPort, enhancedPrompt, accessToken);
+}
+
+async function sendRawEditViaProxy(proxyPort: number, instruction: string, accessToken?: string): Promise<void> {
   const WebSocket = (await import('ws')).default;
   return new Promise((resolve, reject) => {
     const url = accessToken
@@ -494,8 +561,7 @@ async function sendEditViaProxy(proxyPort: number, prompt: string, accessToken?:
     const ws = new WebSocket(url);
     const timeout = setTimeout(() => { ws.close(); reject(new Error('Edit timed out')); }, 180000);
     ws.on('open', () => {
-      const enhancedPrompt = `You are building a Next.js web application with Tailwind CSS and shadcn/ui components.\n\nThe user wants: ${prompt}\n\nEdit the files in this project to build what the user described. Focus on src/app/page.tsx as the main page. Use shadcn components where appropriate. Use lucide-react for icons and framer-motion for animations (both already installed). Make it look professional and modern.`;
-      ws.send(JSON.stringify({ type: 'edit-request', selector: 'body', tagName: 'body', className: '', textContent: '', instruction: enhancedPrompt, sourceInfo: { file: 'src/app/page.tsx', line: 1 } }));
+      ws.send(JSON.stringify({ type: 'edit-request', selector: 'body', tagName: 'body', className: '', textContent: '', instruction, sourceInfo: { file: 'src/app/page.tsx', line: 1 } }));
     });
     ws.on('message', (data: Buffer) => {
       try {

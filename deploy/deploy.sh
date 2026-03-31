@@ -20,9 +20,9 @@ su - layrr -c "cd /opt/layrr && pnpm install"
 echo "[3/7] Building..."
 su - layrr -c "cd /opt/layrr && pnpm build"
 
-# Push DB schema
+# Push DB schema (non-fatal — may fail if already up to date)
 echo "[5/7] Pushing database schema..."
-su - layrr -c "cd /opt/layrr/packages/app && DATABASE_PATH=/var/lib/layrr/layrr.db npx drizzle-kit push"
+su - layrr -c "cd /opt/layrr/packages/app && DATABASE_PATH=/var/lib/layrr/layrr.db npx drizzle-kit push" || echo "  ⚠ Schema push failed (may already be up to date)"
 
 # Install systemd services
 echo "[6/7] Installing services..."

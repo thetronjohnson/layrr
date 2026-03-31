@@ -40,6 +40,7 @@ export async function GET(
 
     return NextResponse.json({
       status,
+      stage: result.stage || null,
       proxyPort: result.proxyPort,
       framework: result.framework || project.framework,
       editCount: result.editCount || 0,

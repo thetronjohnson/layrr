@@ -40,7 +40,34 @@ export async function GET(req: Request) {
     const emails = await emailRes.json();
     const primaryEmail = emails.find((e: any) => e.primary)?.email || githubUser.email || "";
 
-    // Upsert user
+    const session = await getSession();
+
+    // If already logged in (e.g. Google user), link GitHub to existing account
+    if (session.userId) {
+      await db.update(users).set({
+        githubId: String(githubUser.id),
+        githubToken: accessToken,
+        githubUsername: githubUser.login,
+        updatedAt: new Date(),
+      }).where(eq(users.id, session.userId));
+
+      session.githubToken = accessToken;
+      session.githubUsername = githubUser.login;
+      await session.save();
+
+      const isPopupLink = storedState?.startsWith("popup:");
+      cookieStore.delete("github_oauth_state");
+
+      if (isPopupLink) {
+        return new NextResponse(
+          `<html><body><script>window.opener?.postMessage("github-connected","*");window.close();</script></body></html>`,
+          { headers: { "Content-Type": "text/html" } }
+        );
+      }
+      return NextResponse.redirect(new URL("/dashboard", getBaseUrl(req)));
+    }
+
+    // Normal login/signup flow
     const existing = await db.select().from(users).where(eq(users.githubId, String(githubUser.id))).limit(1);
 
     let userId: string;
@@ -62,15 +89,21 @@ export async function GET(req: Request) {
       userId = newUser.id;
     }
 
-    // Set session
-    const session = await getSession();
     session.userId = userId;
     session.githubToken = accessToken;
     session.githubUsername = githubUser.login;
     session.displayName = githubUser.login;
     await session.save();
 
+    const isPopup = storedState?.startsWith("popup:");
     cookieStore.delete("github_oauth_state");
+
+    if (isPopup) {
+      return new NextResponse(
+        `<html><body><script>window.opener?.postMessage("github-connected","*");window.close();</script></body></html>`,
+        { headers: { "Content-Type": "text/html" } }
+      );
+    }
 
     return NextResponse.redirect(new URL("/dashboard", getBaseUrl(req)));
   } catch (error) {

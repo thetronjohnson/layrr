@@ -3,12 +3,16 @@ import { github } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const mode = searchParams.get("mode"); // "popup" for popup flow
+
   const state = generateState();
-  const url = github.createAuthorizationURL(state, ["repo", "read:user", "user:email"]);
+  const stateValue = mode === "popup" ? `popup:${state}` : state;
+  const url = github.createAuthorizationURL(stateValue, ["repo", "read:user", "user:email"]);
 
   const cookieStore = await cookies();
-  cookieStore.set("github_oauth_state", state, {
+  cookieStore.set("github_oauth_state", stateValue, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

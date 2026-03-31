@@ -52,7 +52,7 @@ export default function NewWebsitePage() {
           <input
             type="text"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => setName(e.target.value.replace(/\s+/g, "-"))}
             placeholder="my-website"
             autoFocus
             className="w-full h-10 px-3 rounded-lg border border-input bg-secondary text-sm placeholder:text-muted-foreground outline-none focus:border-ring transition-colors"

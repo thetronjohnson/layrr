@@ -1,7 +1,58 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Play, Square, ExternalLink, Loader2 } from "lucide-react";
+import { Play, Square, ExternalLink, Loader2, Check } from "lucide-react";
+
+type Stage = 'setup' | 'installing' | 'dev-server' | 'generating' | 'fixing' | 'ready' | null;
+
+const STAGES: { key: Stage; label: string }[] = [
+  { key: 'setup', label: 'Setting up project' },
+  { key: 'installing', label: 'Installing dependencies' },
+  { key: 'dev-server', label: 'Starting dev server' },
+  { key: 'generating', label: 'AI is building your website' },
+  { key: 'fixing', label: 'Checking for errors' },
+  { key: 'ready', label: 'Ready' },
+];
+
+function StageProgress({ currentStage }: { currentStage: Stage }) {
+  const currentIndex = STAGES.findIndex(s => s.key === currentStage);
+
+  // For non-template projects (import), skip generating/fixing stages
+  const visibleStages = currentIndex <= 2 && currentStage !== 'generating' && currentStage !== 'fixing'
+    ? STAGES.filter(s => s.key !== 'generating' && s.key !== 'fixing')
+    : STAGES;
+
+  const visibleIndex = visibleStages.findIndex(s => s.key === currentStage);
+
+  return (
+    <div className="space-y-2.5">
+      {visibleStages.map((stage, i) => {
+        const isDone = i < visibleIndex;
+        const isCurrent = i === visibleIndex;
+        const isPending = i > visibleIndex;
+
+        return (
+          <div key={stage.key} className="flex items-center gap-3">
+            <div className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+              {isDone ? (
+                <div className="h-5 w-5 rounded-full bg-success/20 flex items-center justify-center">
+                  <Check className="h-3 w-3 text-success" />
+                </div>
+              ) : isCurrent ? (
+                <Loader2 className="h-4 w-4 text-yellow-400 animate-spin" />
+              ) : (
+                <div className="h-2 w-2 rounded-full bg-muted-foreground/20 ml-1.5" />
+              )}
+            </div>
+            <span className={`text-xs ${isDone ? 'text-muted-foreground' : isCurrent ? 'text-foreground font-medium' : 'text-muted-foreground/40'}`}>
+              {stage.label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function ContainerControls({
   projectId,
@@ -21,6 +72,7 @@ export function ContainerControls({
   const [proxyPort, setProxyPort] = useState<number | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [editCount, setEditCount] = useState(initialEditCount);
+  const [stage, setStage] = useState<Stage>(null);
 
   const isProduction = typeof window !== 'undefined' && location.hostname !== 'localhost';
   const editorUrl = proxyPort
@@ -33,7 +85,6 @@ export function ContainerControls({
 
   const [mounted, setMounted] = useState(false);
 
-  // Only poll after hydration to avoid mismatch
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -50,16 +101,18 @@ export function ContainerControls({
         if (data.proxyPort) setProxyPort(data.proxyPort);
         if (data.accessToken) setAccessToken(data.accessToken);
         if (data.editCount !== undefined) setEditCount(data.editCount);
+        if (data.stage !== undefined) setStage(data.stage);
       } catch {}
     }
     check();
-    const interval = setInterval(check, 5000);
+    const interval = setInterval(check, isStarting ? 2000 : 5000);
     return () => { active = false; clearInterval(interval); };
-  }, [projectId, mounted]);
+  }, [projectId, mounted, isStarting]);
 
   async function startContainer() {
     setLoading(true);
     setContainerStatus("STARTING");
+    setStage('setup');
     try {
       const res = await fetch(`/api/containers/${projectId}/start`, { method: "POST" });
       const data = await res.json();
@@ -67,16 +120,19 @@ export function ContainerControls({
         if (data.proxyPort) setProxyPort(data.proxyPort);
         if (data.status === "RUNNING") {
           setContainerStatus("RUNNING");
+          setStage('ready');
           setLoading(false);
         } else {
           pollStatus();
         }
       } else {
         setContainerStatus("ERROR");
+        setStage(null);
         setLoading(false);
       }
     } catch {
       setContainerStatus("ERROR");
+      setStage(null);
       setLoading(false);
     }
   }
@@ -84,6 +140,7 @@ export function ContainerControls({
   async function stopContainer() {
     setLoading(true);
     setContainerStatus("STOPPING");
+    setStage(null);
     try {
       await fetch(`/api/containers/${projectId}/stop`, { method: "POST" });
       setContainerStatus("STOPPED");
@@ -103,6 +160,7 @@ export function ContainerControls({
         setContainerStatus(data.status);
         if (data.proxyPort) setProxyPort(data.proxyPort);
         if (data.accessToken) setAccessToken(data.accessToken);
+        if (data.stage !== undefined) setStage(data.stage);
         if (data.status === "RUNNING" || data.status === "ERROR") {
           setLoading(false);
           return;
@@ -151,16 +209,14 @@ export function ContainerControls({
 
     if (isStarting) {
       return (
-        <div className="flex items-center justify-between">
+        <div className="space-y-5">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-lg bg-yellow-400/10 flex items-center justify-center">
               <Loader2 className="h-3.5 w-3.5 text-yellow-400 animate-spin" />
             </div>
-            <div>
-              <p className="text-xs font-medium">Starting editor...</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Setting up your website...</p>
-            </div>
+            <p className="text-xs font-medium">Setting up your website...</p>
           </div>
+          {stage && <StageProgress currentStage={stage} />}
         </div>
       );
     }
@@ -215,7 +271,7 @@ export function ContainerControls({
   return (
     <div className="space-y-4">
       <StatusRow />
-      {editCount > 0 && (
+      {editCount > 0 && !isStarting && (
         <div className="pt-4 border-t border-border flex items-center gap-2 text-[10px] text-muted-foreground">
           <span className="font-bold text-foreground text-xs">{editCount}</span>
           edit{editCount !== 1 ? 's' : ''} made

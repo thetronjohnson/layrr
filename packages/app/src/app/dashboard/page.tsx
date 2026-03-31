@@ -6,6 +6,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { GitBranch, Sparkles, Globe, FileText } from "lucide-react";
 import { ProjectActions } from "./actions";
+import { Welcome } from "./welcome";
 
 function GithubIcon({ className }: { className?: string }) {
   return (
@@ -36,17 +37,14 @@ const STATUS_LABELS: Record<string, string> = {
   STOPPING: "Stopping...",
 };
 
-function TemplateCard({ name, description, prompt, icon: Icon }: { name: string; description: string; prompt: string; icon: any }) {
+function TemplateCard({ name, prompt, icon: Icon }: { name: string; prompt: string; icon: any }) {
   return (
     <Link
       href={`/dashboard/new?name=${encodeURIComponent(name)}&prompt=${encodeURIComponent(prompt)}`}
-      className="group rounded-xl bg-card p-4 ring-1 ring-foreground/10 transition-all hover:ring-foreground/20 text-left"
+      className="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary/50 text-left"
     >
-      <div className="h-8 w-8 rounded-lg bg-secondary flex items-center justify-center mb-3">
-        <Icon className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-      </div>
-      <p className="text-xs font-semibold mb-1">{name}</p>
-      <p className="text-[10px] text-muted-foreground leading-relaxed">{description}</p>
+      <Icon className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors flex-shrink-0" />
+      <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">{name}</span>
     </Link>
   );
 }
@@ -59,69 +57,54 @@ export default async function DashboardPage() {
     .where(eq(projects.userId, session.userId))
     .orderBy(desc(projects.updatedAt));
 
-  const displayName = session.githubUsername || session.displayName || "there";
+  const displayName = (session.githubUsername || session.displayName || "there").split(" ")[0];
 
   return (
     <div>
       {userProjects.length === 0 ? (
         <div>
-          <div className="mb-10">
-            <h1 className="text-xl font-bold mb-2">Welcome, {displayName}</h1>
-            <p className="text-sm text-muted-foreground">Describe what you want to build and AI will create it for you.</p>
+          <div className="mb-8">
+            <Welcome name={displayName} />
+            <p className="text-xs text-muted-foreground">Describe what you want and AI will build it.</p>
           </div>
 
-          {/* Hero CTA */}
-          <Link
-            href="/dashboard/new"
-            className="group block rounded-xl bg-card p-6 ring-1 ring-foreground/10 transition-all hover:ring-foreground/20 mb-6"
-          >
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <Sparkles className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold mb-0.5">Create a new website</p>
-                <p className="text-xs text-muted-foreground">Describe what you want and AI will build it. You can edit everything visually after.</p>
-              </div>
-            </div>
-          </Link>
+          {/* Actions */}
+          <div className="grid grid-cols-2 gap-3 mb-8">
+            <Link
+              href="/dashboard/new"
+              className="flex items-center justify-center gap-2 rounded-lg ring-1 ring-foreground/10 py-3 text-sm font-medium hover:ring-foreground/20 transition-all"
+            >
+              <Sparkles className="h-4 w-4 text-muted-foreground" />
+              Create new
+            </Link>
+            <ProjectActions showNewButton={false} githubConnected={!!session.githubToken} inline />
+          </div>
 
-          {/* Starter templates */}
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Start from a template</p>
-          <div className="grid grid-cols-3 gap-3 mb-8">
+          {/* Templates */}
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 mb-1">Templates</p>
+          <div className="flex flex-col">
             <TemplateCard
               name="Landing Page"
-              description="A hero section, features, pricing, and a signup form."
               prompt="A modern SaaS landing page with a hero section, features grid with icons, pricing table with 3 tiers, testimonials, and a waitlist signup form. Use a clean, professional design."
               icon={Globe}
             />
             <TemplateCard
               name="Portfolio"
-              description="Showcase your work with a personal portfolio site."
               prompt="A minimal personal portfolio website with a bio section, a grid of project cards with images and descriptions, a skills section, and a contact form. Dark theme, elegant typography."
               icon={FileText}
             />
             <TemplateCard
               name="Blog"
-              description="A simple blog with posts and a clean reading experience."
               prompt="A minimal blog homepage with a header, a list of blog post cards with title, date, excerpt, and a featured post at the top. Include a sidebar with categories and an about section. Clean, readable design."
               icon={FileText}
             />
           </div>
-
-          {/* Import option */}
-          {session.githubToken && (
-            <div className="text-center">
-              <p className="text-[10px] text-muted-foreground mb-2">Already have a project?</p>
-              <ProjectActions />
-            </div>
-          )}
         </div>
       ) : (
         <div>
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-lg font-bold">Projects</h1>
-            <ProjectActions />
+            <ProjectActions githubConnected={!!session.githubToken} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             {userProjects.map((project) => (
