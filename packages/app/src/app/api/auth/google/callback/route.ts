@@ -53,10 +53,14 @@ export async function GET(req: Request) {
         updatedAt: new Date(),
       }).where(eq(users.id, userId));
     } else {
+      const trialEnds = new Date();
+      trialEnds.setDate(trialEnds.getDate() + 3);
       const [newUser] = await db.insert(users).values({
         googleId,
         email,
         githubUsername: displayName,
+        subscriptionStatus: "trialing",
+        subscriptionEndsAt: trialEnds,
       }).returning();
       userId = newUser.id;
     }

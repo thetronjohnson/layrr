@@ -9,17 +9,17 @@
   <h1>layrr</h1>
 
   <p>
-    <strong>Point, click, and edit any web app with AI</strong>
+    <strong>Point at anything. Describe the change. Done.</strong>
   </p>
   <p>
-    A CLI that injects a visual overlay into your running dev server. Select any element, describe what you want to change in plain English, and AI applies the edit to your source code.
+    Layrr is a visual AI code editor. Import a GitHub repo or start from a template, click any element in the running app, describe what you want in plain English, and AI edits the source code — live. Push changes back to GitHub when you're done.
   </p>
 
   <p>
     <a href="https://layrr.dev">Website</a> &middot;
-    <a href="#features">Features</a> &middot;
-    <a href="#installation">Install</a> &middot;
-    <a href="#usage">Usage</a>
+    <a href="#get-started">Get Started</a> &middot;
+    <a href="#how-it-works">How It Works</a> &middot;
+    <a href="#cli">CLI</a>
   </p>
 
   <p>
@@ -30,164 +30,50 @@
 
 ---
 
-## Overview
+## Why Layrr
 
-**layrr** turns your browser into a visual code editor powered by AI. Instead of hunting through source files, you click on any element in your running app, describe the change you want, and your AI agent edits the actual source code — with hot reload.
+AI coding tools are powerful, but you still have to describe *where* to make the change — which file, which component, which line. Layrr skips all of that. You point at the thing on screen, say what you want, and the code changes.
 
-Works with **Claude Code** or **OpenAI Codex CLI**. Supports React, Vue, Svelte, Solid, Preact, Astro, and any dev server.
+**No context-switching.** You stay in the browser, looking at the actual app. No jumping between editor tabs, no grepping for the right file, no copy-pasting selectors into a prompt.
 
-## Features
+**Every edit is a git commit.** Each AI change is auto-committed with a `[layrr]` prefix. Preview how the app looked at any past edit, or revert to a previous version in one click. You always have a clean undo path.
 
-### Visual Element Selection
-- **Click to Select** — switch to Edit mode and click any element on the page
-- **Multi-Select** — Shift+click to select multiple elements, apply one instruction to all
-- **Element Highlighting** — visual feedback shows exactly which element you're targeting
-- **Browse & Edit Modes** — toggle seamlessly between browsing and editing
+**Works with any framework.** React, Next.js, Vue, Nuxt, Svelte, SvelteKit, Solid, Astro, Vite — Layrr maps clicked elements back to source files across all of them.
 
-### AI-Powered Edits
-- **Natural Language** — describe changes in plain English: "make this red", "add padding", "change the text"
-- **Source Code Editing** — AI reads the actual source file and makes minimal, precise edits
-- **Hot Reload** — changes appear instantly via your dev server's HMR
-- **Sequential Queue** — multiple edits are queued and processed one at a time
+## Get Started
 
-### Version History
-- **Auto-Commit** — every edit is committed to git with a `[layrr]` prefix
-- **Preview Versions** — click any past edit in the history panel to preview how the app looked at that point
-- **Permanent Revert** — revert to any previous version with confirmation
-- **Selective Staging** — only files changed by AI are committed, your uncommitted work is never touched
+Go to [layrr.dev](https://layrr.dev) and sign up. You can:
 
-### Multi-Framework Source Mapping
-- **React** (including 19+) — fiber owner stacks via `element-source`
-- **Vue** — component instance metadata
-- **Svelte, Solid, Preact** — framework-specific resolvers
-- **Astro, HTML, others** — heuristic text/tag/class matching fallback
-- **Any dev server** — Vite, Next.js, Astro, Webpack, and more
+- **Import a GitHub repo** — Layrr clones it, spins up a dev server, and opens the visual editor. When you're done, push your changes back to GitHub.
+- **Start from a template** — Describe what you want to build in plain English. Layrr generates a working Next.js app and drops you into the editor to keep iterating visually.
 
-### Multi-Agent Support
-- **Claude Code** — Anthropic's coding agent (bundled)
-- **Codex CLI** — OpenAI's coding agent
-- **Interactive Picker** — choose on first run, saved to `~/.layrr/config.json`
-- **CLI Override** — switch anytime with `--agent claude` or `--agent codex`
+## How It Works
 
-### Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Alt+K` / `Cmd+K` | Toggle Browse / Edit mode |
-| `Shift+Click` | Multi-select elements |
-| `Enter` | Send edit instruction |
-| `Escape` | Close panel / deselect / exit edit |
-
-## Installation
-
-### Prerequisites
-
-- Node.js 18+
-- A running dev server (Vite, Next.js, Astro, etc.)
-- One AI agent authenticated (see below)
-
-### Install
-
-```bash
-npm install -g layrr
+```
+You click an element          Layrr figures out             AI edits the
+in the browser          →     the source file + line    →   actual code
+                                                            ↓
+You see it instantly    ←     Dev server hot reloads    ←   Saved & committed
 ```
 
-Or run directly:
+Click any element on the page to select it. Type what you want to change. The AI reads the source file, makes targeted edits, and your dev server hot-reloads the result instantly.
+
+**Multi-select** — Shift+click to select multiple elements and apply one instruction to all of them.
+
+**History** — Open the history panel to preview how the app looked at any past edit, or permanently revert to a previous version.
+
+**Publish** — Push your changes to a GitHub branch when you're ready. Share a live preview link with anyone, protected by a password you set.
+
+## CLI
+
+Layrr also ships as an open-source CLI you can run against any local dev server.
 
 ```bash
 npx layrr --port 3000
 ```
 
-### Agent Setup
-
-**Claude Code** (bundled — just authenticate):
-
-```bash
-claude login            # API key
-claude login --sso      # SSO
-claude login --bedrock  # AWS Bedrock
-```
-
-**Codex CLI**:
-
-```bash
-npm install -g @openai/codex
-export OPENAI_API_KEY=<your-key>
-```
-
-## Usage
-
-### Quick Start
-
-```bash
-# Start your dev server
-pnpm dev                    # runs on port 3000
-
-# In another terminal
-npx layrr --port 3000       # opens browser at localhost:4567
-```
-
-Your browser opens with a floating toolbar at the bottom right. Click **Edit**, select an element, type your change, press Enter.
-
-### How It Works
-
-```
-Browser (overlay)          layrr proxy                    Dev server
-    |                          |                               |
-    |-- click element -------->|                               |
-    |-- "make this red" ------>|                               |
-    |                          |-- AI edits source file ------>|
-    |                          |                               |-- hot reload
-    |<-- page updates --------|                               |
-```
-
-### CLI Options
-
-```
-npx layrr --port <dev-server-port> [options]
-
-Options:
-  -p, --port <number>        Dev server port (required)
-  --proxy-port <number>      Layrr proxy port (default: 4567)
-  --agent <name>             AI agent: claude or codex
-  --no-open                  Don't open browser automatically
-  -h, --help                 Show help
-```
-
-## Development
-
-```bash
-git clone https://github.com/thetronjohnson/layrr.git
-cd layrr
-pnpm install
-pnpm build
-node dist/cli.js --port 3000
-```
-
-### Project Structure
-
-```
-src/
-  cli.ts              Entry point
-  config.ts           Agent config (~/.layrr/config.json)
-  agents/             Pluggable AI agent system
-  server/             HTTP proxy + WebSocket + version control
-  editor/             Source file resolution
-overlay/              Browser overlay (vanilla TS, bundled as IIFE)
-  overlay.ts          Entry point + event wiring
-  styles.ts           CSS design system
-  animate.ts          Spring animations (motion library)
-  elements.ts         DOM builder + toasts
-  history.ts          Version history panel
-  source.ts           Element source mapping
-  state.ts            Shared state + persistence
-  constants.ts        Color palette + tokens
-```
-
-## Author
-
-Built by [Kiran Johns](https://kiranjohns.com)
+See the [CLI docs](packages/cli/README.md) for setup and options.
 
 ## License
 
-MIT
+MIT — Built by [Kiran Johns](https://kiranjohns.com)

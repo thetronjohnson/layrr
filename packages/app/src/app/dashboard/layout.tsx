@@ -19,7 +19,7 @@ export default async function DashboardLayout({
   const status = user.subscriptionStatus;
   const hasAccess =
     status === "active" ||
-    status === "trialing" ||
+    (status === "trialing" && user.subscriptionEndsAt && user.subscriptionEndsAt > new Date()) ||
     (status === "canceled" && user.subscriptionEndsAt && user.subscriptionEndsAt > new Date());
   if (!hasAccess) redirect("/pricing");
 

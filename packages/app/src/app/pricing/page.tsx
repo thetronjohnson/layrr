@@ -30,7 +30,7 @@ export default function PricingPage() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <h1 className="text-xl font-bold mb-2">layrr</h1>
-          <p className="text-sm text-muted-foreground">Start building with a 3-day free trial.</p>
+          <p className="text-sm text-muted-foreground">Subscribe to keep building.</p>
         </div>
 
         <div className="rounded-xl ring-1 ring-foreground/10 p-6">
@@ -59,11 +59,11 @@ export default function PricingPage() {
                 Redirecting...
               </>
             ) : (
-              "Start free trial"
+              "Subscribe"
             )}
           </button>
           <p className="text-[10px] text-muted-foreground text-center mt-3">
-            3-day free trial, then $29/month. Cancel anytime.
+            $29/month. Cancel anytime.
           </p>
         </div>
       </div>

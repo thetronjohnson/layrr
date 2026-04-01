@@ -11,14 +11,13 @@ Layrr is a visual AI code editor. Users point at any element in a running web ap
 
 ## Monorepo Structure
 
-pnpm workspaces + Turborepo. Four packages:
+pnpm workspaces + Turborepo. Three packages:
 
 ```
 packages/
   cli/        — standalone CLI (npm: "layrr")
   app/        — Next.js 16 dashboard
   server/     — Hono process manager API
-  container/  — Docker image (for future production use)
 ```
 
 ## Build & Run
@@ -41,7 +40,7 @@ Database:
 cd packages/app && npx drizzle-kit push  # push schema to SQLite
 ```
 
-No tests or lint configured.
+No tests configured. App package has eslint: `pnpm --filter @layrr/app lint`.
 
 ## Environment
 
@@ -83,6 +82,9 @@ Proxies a dev server, injects browser overlay, sends edits to an AI agent.
 **`overlay/`** — Browser UI (vanilla TS, IIFE bundle):
 - `overlay.ts` — Entry point, event wiring, mode switching
 - `styles.ts` — CSS design system with tokens and primitives. All scoped with `__layrr` prefix. Never use Tailwind in overlay.
+- `elements.ts` — DOM builder + toast notifications
+- `state.ts` — Shared state + persistence
+- `constants.ts` — Color palette + tokens
 - `animate.ts` — Spring animations via `motion` library
 - `history.ts` — Version history panel with preview/revert
 - `source.ts` — `element-source` integration for multi-framework source mapping
@@ -139,8 +141,8 @@ Manages user projects as local child processes. Loads root `.env` via dotenv.
 
 ### `packages/server/templates/nextjs-shadcn/`
 
-Pre-built Next.js 15 + shadcn + Tailwind template. Copied (not cloned) for new websites. Contains:
-- Next.js 16 with App Router
+Pre-built Next.js + shadcn + Tailwind template. Copied (not cloned) for new websites. Contains:
+- Next.js with App Router
 - Tailwind CSS 4 + shadcn/ui (Base Nova style)
 - Button component pre-installed
 - `pnpm-lock.yaml` for fast install
